@@ -114,7 +114,6 @@ function App() {
 
   const handleError = (errorMessage) => {
     setError(errorMessage);
-    setFlashcards([]);
     setSnackbar({
       open: true,
       message: errorMessage,
@@ -122,22 +121,80 @@ function App() {
     });
   };
 
+  const handleFlashcardsUpdate = (updatedFlashcards) => {
+    setFlashcards(updatedFlashcards);
+    setSnackbar({
+      open: true,
+      message: 'Flashcard updated successfully!',
+      severity: 'success',
+    });
+  };
+
   const handleCustomizationChange = (newCustomization) => {
     setCustomization(newCustomization);
+    setSnackbar({
+      open: true,
+      message: 'Design updated successfully!',
+      severity: 'success',
+    });
   };
 
   const handleExport = async (format, customizationOptions) => {
     try {
-      // Implementation for export functionality will go here
       setSnackbar({
         open: true,
-        message: `Exported flashcards in ${format} format`,
+        message: `Exporting flashcards in ${format} format...`,
+        severity: 'info',
+      });
+
+      let endpoint = '';
+      switch (format) {
+        case 'pdf':
+          endpoint = '/api/export/pdf';
+          break;
+        case 'anki':
+          endpoint = '/api/export/anki';
+          break;
+        default:
+          throw new Error('Unsupported export format');
+      }
+
+      const response = await fetch(`${config.API_BASE_URL}${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          flashcards,
+          customization: customizationOptions
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to export flashcards in ${format} format`);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `flashcards.${format === 'anki' ? 'apkg' : format}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      setSnackbar({
+        open: true,
+        message: `Successfully exported flashcards in ${format} format!`,
         severity: 'success',
       });
     } catch (error) {
+      console.error('Export error:', error);
       setSnackbar({
         open: true,
-        message: `Failed to export flashcards: ${error.message}`,
+        message: error.message,
         severity: 'error',
       });
     }
@@ -298,6 +355,8 @@ function App() {
                   <FlashcardList 
                     flashcards={flashcards} 
                     onStatsUpdate={(newStats) => setStats(prev => ({ ...prev, ...newStats }))}
+                    onFlashcardsUpdate={handleFlashcardsUpdate}
+                    onError={handleError}
                     customization={customization}
                   />
                 </Paper>

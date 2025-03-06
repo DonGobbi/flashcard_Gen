@@ -45,7 +45,7 @@ const LANGUAGES = [
   'Chinese', 'Japanese', 'Korean', 'Russian', 'Arabic'
 ];
 
-const FlashcardList = ({ flashcards, onStatsUpdate, customization }) => {
+const FlashcardList = ({ flashcards, onStatsUpdate, onFlashcardsUpdate, customization, onError }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [studyStartTime, setStudyStartTime] = useState(null);
@@ -129,8 +129,8 @@ const FlashcardList = ({ flashcards, onStatsUpdate, customization }) => {
   };
 
   const handleImprove = async () => {
-    setImproving(true);
     try {
+      setImproving(true);
       const response = await fetch(`${config.API_BASE_URL}/api/improve`, {
         method: 'POST',
         headers: {
@@ -142,15 +142,17 @@ const FlashcardList = ({ flashcards, onStatsUpdate, customization }) => {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to improve flashcard');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to improve flashcard');
       }
 
       const data = await response.json();
       const updatedFlashcards = [...flashcards];
       updatedFlashcards[currentIndex] = data.flashcard;
-      // Update flashcards through parent component
+      onFlashcardsUpdate?.(updatedFlashcards);
     } catch (error) {
       console.error('Error improving flashcard:', error);
+      onError?.(error.message);
     } finally {
       setImproving(false);
     }
@@ -159,10 +161,10 @@ const FlashcardList = ({ flashcards, onStatsUpdate, customization }) => {
   const handleTranslate = async () => {
     if (!selectedLanguage) return;
     
-    setTranslating(true);
-    setTranslateDialogOpen(false);
-    
     try {
+      setTranslating(true);
+      setTranslateDialogOpen(false);
+      
       const response = await fetch(`${config.API_BASE_URL}/api/translate`, {
         method: 'POST',
         headers: {
@@ -175,19 +177,108 @@ const FlashcardList = ({ flashcards, onStatsUpdate, customization }) => {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to translate flashcard');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to translate flashcard');
       }
 
       const data = await response.json();
       const updatedFlashcards = [...flashcards];
       updatedFlashcards[currentIndex] = data.flashcard;
-      // Update flashcards through parent component
+      onFlashcardsUpdate?.(updatedFlashcards);
     } catch (error) {
       console.error('Error translating flashcard:', error);
+      onError?.(error.message);
     } finally {
       setTranslating(false);
       setSelectedLanguage('');
     }
+  };
+
+  const handleExport = async (format) => {
+    try {
+      setMenuAnchor(null);
+      let endpoint = '';
+      let downloadName = '';
+      
+      switch (format) {
+        case 'pdf':
+          endpoint = '/api/export/pdf';
+          downloadName = 'flashcards.pdf';
+          break;
+        case 'anki':
+          endpoint = '/api/export/anki';
+          downloadName = 'flashcards.apkg';
+          break;
+        default:
+          throw new Error('Unsupported export format');
+      }
+
+      const response = await fetch(`${config.API_BASE_URL}${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          flashcards,
+          customization
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Export failed: ${response.statusText}`);
+      }
+
+      // Create a blob from the response and download it
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = downloadName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Export error:', error);
+      // Notify parent component about the error
+      onError?.(error.message);
+    }
+  };
+
+  const handlePrint = () => {
+    setMenuAnchor(null);
+    const printWindow = window.open('', '_blank');
+    const content = `
+      <html>
+        <head>
+          <title>Flashcards</title>
+          <style>
+            body { font-family: ${customization?.font || 'Arial'}; }
+            .card {
+              page-break-inside: avoid;
+              border: 1px solid #ccc;
+              padding: 20px;
+              margin: 20px;
+              border-radius: 8px;
+            }
+            .question { font-weight: bold; margin-bottom: 10px; }
+            .answer { margin-top: 10px; }
+          </style>
+        </head>
+        <body>
+          ${flashcards.map((card, index) => `
+            <div class="card">
+              <div class="question">Question ${index + 1}: ${card.question}</div>
+              <div class="answer">Answer: ${card.answer}</div>
+            </div>
+          `).join('')}
+        </body>
+      </html>
+    `;
+    
+    printWindow.document.write(content);
+    printWindow.document.close();
+    printWindow.print();
   };
 
   const getCardStyle = () => {
@@ -404,23 +495,14 @@ const FlashcardList = ({ flashcards, onStatsUpdate, customization }) => {
         open={Boolean(menuAnchor)}
         onClose={() => setMenuAnchor(null)}
       >
-        <MenuItem onClick={() => {
-          // Handle print
-          setMenuAnchor(null);
-        }}>
-          <PrintIcon sx={{ mr: 1 }} /> Print Card
+        <MenuItem onClick={handlePrint}>
+          <PrintIcon sx={{ mr: 1 }} /> Print Cards
         </MenuItem>
-        <MenuItem onClick={() => {
-          // Handle download
-          setMenuAnchor(null);
-        }}>
-          <DownloadIcon sx={{ mr: 1 }} /> Download Card
+        <MenuItem onClick={() => handleExport('pdf')}>
+          <DownloadIcon sx={{ mr: 1 }} /> Export PDF
         </MenuItem>
-        <MenuItem onClick={() => {
-          // Handle share
-          setMenuAnchor(null);
-        }}>
-          <ShareIcon sx={{ mr: 1 }} /> Share Card
+        <MenuItem onClick={() => handleExport('anki')}>
+          <ShareIcon sx={{ mr: 1 }} /> Export to Anki
         </MenuItem>
       </Menu>
 

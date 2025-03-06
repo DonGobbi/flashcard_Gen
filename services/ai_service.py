@@ -1,178 +1,142 @@
 import os
-import json
-import logging
-from typing import List, Dict, Optional
 from groq import Groq
-from config import config
-
-logger = logging.getLogger(__name__)
+from typing import Dict, List, Optional
+import json
 
 class AIService:
     def __init__(self):
-        """Initialize the AI service with API key."""
-        self.api_key = config.GROQ_API_KEY
+        self.api_key = os.getenv('GROQ_API_KEY')
         if not self.api_key:
             raise ValueError("GROQ_API_KEY is required")
+        # Initialize Groq client with minimal configuration
         self.client = Groq(api_key=self.api_key)
         self.model = "mixtral-8x7b-32768"
 
-    async def generate_flashcards(self, text: str, num_cards: int = 5, subject: str = "") -> List[Dict[str, str]]:
-        """Generate flashcards from text using AI."""
+    def generate_flashcards(self, text: str) -> List[Dict[str, str]]:
+        """Generate flashcards from input text."""
         try:
-            # Prepare the prompt
-            subject_context = f" about {subject}" if subject else ""
-            prompt = f"""Generate {num_cards} high-quality flashcards{subject_context} from the following text. 
-            Each flashcard should have a question and answer that tests understanding of key concepts.
-            Format your response as a JSON array of objects with 'question' and 'answer' fields.
+            prompt = f"""Create educational flashcards from this text:
+            {text}
+            
+            Generate clear, concise questions and comprehensive answers.
+            Format each flashcard exactly like this:
+            Q: [question]
+            A: [answer]
+            
+            Focus on key concepts and important details."""
 
-            Text: {text}
-
-            Response format:
-            [
-                {{"question": "...", "answer": "..."}},
-                {{"question": "...", "answer": "..."}}
-            ]
-            """
-
-            # Get completion from API
             completion = self._get_completion(prompt)
             if not completion:
                 raise ValueError("Failed to generate flashcards")
 
-            # Parse flashcards from completion
-            flashcards = self._parse_flashcard_list(completion)
-            if not flashcards:
-                raise ValueError("Failed to parse flashcards from API response")
+            flashcards = []
+            lines = [line.strip() for line in completion.split('\n') if line.strip()]
+            current_card = {}
+
+            for line in lines:
+                if line.startswith('Q:'):
+                    if current_card.get('question'):  # Save previous card
+                        flashcards.append(current_card)
+                        current_card = {}
+                    current_card['question'] = line[2:].strip()
+                elif line.startswith('A:'):
+                    current_card['answer'] = line[2:].strip()
+
+            if current_card.get('question') and current_card.get('answer'):
+                flashcards.append(current_card)
 
             return flashcards
-
         except Exception as e:
-            logger.error(f"Error generating flashcards: {str(e)}")
+            print(f"Error generating flashcards: {str(e)}")
             raise
 
-    async def improve_flashcard(self, question: str, answer: str) -> Dict[str, str]:
+    def improve_flashcard(self, flashcard: Dict) -> Dict:
         """Improve a flashcard's content using AI."""
         try:
-            prompt = f"""Improve this flashcard by making the question more specific and the answer more comprehensive.
-            Current flashcard:
-            Question: {question}
-            Answer: {answer}
-
-            Format your response as a JSON object with 'question' and 'answer' fields.
-            Response format:
-            {{"question": "...", "answer": "..."}}
-            """
+            prompt = f"""Improve this flashcard while maintaining its core concept:
+            Question: {flashcard['question']}
+            Answer: {flashcard['answer']}
+            
+            Make the question more clear and concise, and make the answer more comprehensive 
+            and easier to understand. Format your response exactly like this:
+            Question: [improved question]
+            Answer: [improved answer]"""
 
             completion = self._get_completion(prompt)
             if not completion:
-                raise ValueError("Failed to improve flashcard")
+                raise ValueError("Failed to get AI response")
 
-            card = self._parse_flashcard(completion)
-            if not card or 'question' not in card or 'answer' not in card:
+            # Parse the response
+            lines = [line.strip() for line in completion.split('\n') if line.strip()]
+            question = ""
+            answer = ""
+            
+            for line in lines:
+                if line.startswith('Question:'):
+                    question = line.replace('Question:', '').strip()
+                elif line.startswith('Answer:'):
+                    answer = line.replace('Answer:', '').strip()
+
+            if not question or not answer:
                 raise ValueError("Failed to parse improved flashcard")
 
-            return card
-
+            return {
+                'question': question,
+                'answer': answer
+            }
         except Exception as e:
-            logger.error(f"Error improving flashcard: {str(e)}")
+            print(f"Error improving flashcard: {str(e)}")
             raise
 
-    async def translate_flashcard(self, question: str, answer: str, target_language: str) -> Dict[str, str]:
+    def translate_flashcard(self, flashcard: Dict, target_language: str) -> Dict:
         """Translate a flashcard to the target language."""
         try:
-            prompt = f"""Translate this flashcard to {target_language}.
-            Original flashcard:
-            Question: {question}
-            Answer: {answer}
-
-            Format your response as a JSON object with 'question' and 'answer' fields.
-            Response format:
-            {{"question": "...", "answer": "..."}}
-            """
+            prompt = f"""Translate this flashcard to {target_language}:
+            Original Question: {flashcard['question']}
+            Original Answer: {flashcard['answer']}
+            
+            Provide a natural and accurate translation. Format your response exactly like this:
+            Question: [translated question]
+            Answer: [translated answer]"""
 
             completion = self._get_completion(prompt)
             if not completion:
-                raise ValueError("Failed to translate flashcard")
+                raise ValueError("Failed to get AI response")
 
-            card = self._parse_flashcard(completion)
-            if not card or 'question' not in card or 'answer' not in card:
+            # Parse the response
+            lines = [line.strip() for line in completion.split('\n') if line.strip()]
+            question = ""
+            answer = ""
+            
+            for line in lines:
+                if line.startswith('Question:'):
+                    question = line.replace('Question:', '').strip()
+                elif line.startswith('Answer:'):
+                    answer = line.replace('Answer:', '').strip()
+
+            if not question or not answer:
                 raise ValueError("Failed to parse translated flashcard")
 
-            return card
-
+            return {
+                'question': question,
+                'answer': answer,
+                'original_question': flashcard['question'],
+                'original_answer': flashcard['answer']
+            }
         except Exception as e:
-            logger.error(f"Error translating flashcard: {str(e)}")
+            print(f"Error translating flashcard: {str(e)}")
             raise
 
     def _get_completion(self, prompt: str) -> Optional[str]:
-        """Get completion from the AI model."""
+        """Get completion from Groq API."""
         try:
-            completion = self.client.chat.completions.create(
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a helpful AI that generates high-quality educational flashcards."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
+            response = self.client.chat.completions.create(
                 model=self.model,
+                messages=[{"role": "user", "content": prompt}],
                 temperature=0.7,
-                max_tokens=1024,
+                max_tokens=2000
             )
-
-            return completion.choices[0].message.content
-
+            return response.choices[0].message.content
         except Exception as e:
-            logger.error(f"Error getting completion from API: {str(e)}")
-            raise
-
-    def _parse_flashcard_list(self, text: str) -> List[Dict[str, str]]:
-        """Parse a list of flashcards from JSON text."""
-        try:
-            # Find the JSON array in the text
-            start = text.find('[')
-            end = text.rfind(']') + 1
-            if start == -1 or end == 0:
-                raise ValueError("No JSON array found in response")
-
-            json_str = text[start:end]
-            flashcards = json.loads(json_str)
-
-            # Validate flashcards
-            if not isinstance(flashcards, list):
-                raise ValueError("Response is not a list")
-
-            for card in flashcards:
-                if not isinstance(card, dict) or 'question' not in card or 'answer' not in card:
-                    raise ValueError("Invalid flashcard format")
-
-            return flashcards
-
-        except json.JSONDecodeError as e:
-            logger.error(f"Error parsing flashcard list: {str(e)}")
-            raise ValueError("Failed to parse flashcards from response")
-
-    def _parse_flashcard(self, text: str) -> Optional[Dict[str, str]]:
-        """Parse a single flashcard from JSON text."""
-        try:
-            # Find the JSON object in the text
-            start = text.find('{')
-            end = text.rfind('}') + 1
-            if start == -1 or end == 0:
-                raise ValueError("No JSON object found in response")
-
-            json_str = text[start:end]
-            card = json.loads(json_str)
-
-            # Validate card
-            if not isinstance(card, dict) or 'question' not in card or 'answer' not in card:
-                raise ValueError("Invalid flashcard format")
-
-            return card
-
-        except json.JSONDecodeError as e:
-            logger.error(f"Error parsing flashcard: {str(e)}")
-            raise ValueError("Failed to parse flashcard from response")
+            print(f"Error getting completion: {str(e)}")
+            return None
