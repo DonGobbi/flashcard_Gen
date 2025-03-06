@@ -4,6 +4,8 @@ import logging
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from services.ai_service import AIService
+from services.auth_service import AuthService
+from functools import wraps
 from fpdf import FPDF
 import genanki
 import json
@@ -20,8 +22,60 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 ai_service = AIService()
+auth_service = AuthService()
+
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+        if 'Authorization' in request.headers:
+            token = request.headers['Authorization'].replace('Bearer ', '')
+        
+        if not token:
+            return jsonify({'error': 'Token is missing'}), 401
+
+        try:
+            email = auth_service.verify_token(token)
+            if not email:
+                return jsonify({'error': 'Invalid token'}), 401
+        except Exception as e:
+            return jsonify({'error': 'Invalid token'}), 401
+
+        return f(*args, **kwargs)
+    return decorated
+
+@app.route('/api/auth/register', methods=['POST'])
+def register():
+    try:
+        data = request.get_json()
+        if not data or 'email' not in data or 'password' not in data:
+            return jsonify({'error': 'Email and password are required'}), 400
+
+        result = auth_service.register_user(data['email'], data['password'])
+        return jsonify(result)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error in register: {str(e)}")
+        return jsonify({'error': 'Registration failed'}), 500
+
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    try:
+        data = request.get_json()
+        if not data or 'email' not in data or 'password' not in data:
+            return jsonify({'error': 'Email and password are required'}), 400
+
+        result = auth_service.login_user(data['email'], data['password'])
+        return jsonify(result)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error in login: {str(e)}")
+        return jsonify({'error': 'Login failed'}), 500
 
 @app.route('/api/upload', methods=['POST'])
+@token_required
 def upload_file():
     try:
         if 'file' not in request.files:

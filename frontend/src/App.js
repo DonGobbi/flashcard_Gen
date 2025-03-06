@@ -15,7 +15,7 @@ import {
   Tooltip,
   Button
 } from '@mui/material';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
@@ -24,6 +24,9 @@ import FileUpload from './components/FileUpload';
 import FlashcardList from './components/FlashcardList';
 import FlashcardCustomization from './components/FlashcardCustomization';
 import HelpDialog from './components/HelpDialog';
+import LandingPage from './components/LandingPage';
+import AuthDialog from './components/AuthDialog';
+import AuthService from './services/authService';
 import config from './config';
 
 const getDesignTokens = (mode, customization) => ({
@@ -91,6 +94,9 @@ function App() {
   });
   const [showHelp, setShowHelp] = useState(false);
   const [isImproving, setIsImproving] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
+  const [authMode, setAuthMode] = useState('login');
   const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
 
   useEffect(() => {
@@ -231,6 +237,7 @@ function App() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...AuthService.getAuthHeaders(),
         },
         body: JSON.stringify({
           flashcards,
@@ -283,6 +290,7 @@ function App() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            ...AuthService.getAuthHeaders(),
           },
           body: JSON.stringify({
             flashcard: {
@@ -318,6 +326,41 @@ function App() {
     }
   };
 
+  const handleLogin = () => {
+    setAuthMode('login');
+    setShowAuth(true);
+  };
+
+  const handleSignup = () => {
+    setAuthMode('signup');
+    setShowAuth(true);
+  };
+
+  const handleAuthClose = () => {
+    setShowAuth(false);
+  };
+
+  const handleAuthSuccess = () => {
+    setIsAuthenticated(true);
+    setShowAuth(false);
+    setSnackbar({
+      open: true,
+      message: 'Successfully logged in!',
+      severity: 'success',
+    });
+  };
+
+  const handleLogout = () => {
+    AuthService.logout();
+    setIsAuthenticated(false);
+    setFlashcards([]);
+    setSnackbar({
+      open: true,
+      message: 'Successfully logged out',
+      severity: 'success',
+    });
+  };
+
   const toggleColorMode = () => {
     setMode((prevMode) => (prevMode === 'light' ? 'dark' : 'light'));
   };
@@ -325,6 +368,17 @@ function App() {
   const handleCloseSnackbar = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
   };
+
+  useEffect(() => {
+    const checkAuth = () => {
+      const isAuth = AuthService.isAuthenticated();
+      setIsAuthenticated(isAuth);
+    };
+
+    checkAuth();
+    window.addEventListener('storage', checkAuth);
+    return () => window.removeEventListener('storage', checkAuth);
+  }, []);
 
   return (
     <ThemeProvider theme={theme}>
@@ -336,85 +390,114 @@ function App() {
           transition: 'background-color 0.3s ease-in-out',
         }}
       >
-        <Container maxWidth="lg">
-          <Box sx={{ py: 4 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-              <Typography variant="h4" component="h1" color="primary" gutterBottom>
-                Flashcard Generator
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                {flashcards.length > 0 && (
-                  <Button
-                    variant="outlined"
-                    color="primary"
-                    startIcon={<AutoAwesomeIcon />}
-                    onClick={handleImproveAllCards}
-                    disabled={isImproving}
-                  >
-                    {isImproving ? 'Improving...' : 'Improve All Cards'}
-                  </Button>
-                )}
-                <Tooltip title="Help">
-                  <IconButton onClick={() => setShowHelp(true)} color="inherit">
-                    <HelpOutlineIcon />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title={`Switch to ${mode === 'light' ? 'dark' : 'light'} mode`}>
-                  <IconButton onClick={toggleColorMode} color="inherit">
-                    {mode === 'light' ? <Brightness4Icon /> : <Brightness7Icon />}
-                  </IconButton>
-                </Tooltip>
-              </Box>
-            </Box>
+        <AnimatePresence mode="wait">
+          {!isAuthenticated ? (
+            <motion.div
+              key="landing"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <LandingPage onLogin={handleLogin} onSignup={handleSignup} />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="app"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <Container maxWidth="lg">
+                <Box sx={{ py: 4 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+                    <Typography variant="h4" component="h1" color="primary" gutterBottom>
+                      Flashcard Generator
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                      {flashcards.length > 0 && (
+                        <Button
+                          variant="outlined"
+                          color="primary"
+                          startIcon={<AutoAwesomeIcon />}
+                          onClick={handleImproveAllCards}
+                          disabled={isImproving}
+                        >
+                          {isImproving ? 'Improving...' : 'Improve All Cards'}
+                        </Button>
+                      )}
+                      <Tooltip title="Help">
+                        <IconButton onClick={() => setShowHelp(true)} color="inherit">
+                          <HelpOutlineIcon />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title={`Switch to ${mode === 'light' ? 'dark' : 'light'} mode`}>
+                        <IconButton onClick={toggleColorMode} color="inherit">
+                          {mode === 'light' ? <Brightness4Icon /> : <Brightness7Icon />}
+                        </IconButton>
+                      </Tooltip>
+                      <Button
+                        variant="outlined"
+                        color="inherit"
+                        onClick={handleLogout}
+                      >
+                        Logout
+                      </Button>
+                    </Box>
+                  </Box>
 
-            <Grid container spacing={4}>
-              <Grid item xs={12}>
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5 }}
-                >
-                  <Paper elevation={3} sx={{ p: 3 }}>
-                    <FileUpload onSuccess={handleFileUploadSuccess} onError={handleError} />
-                  </Paper>
-                </motion.div>
-              </Grid>
+                  <Grid container spacing={4}>
+                    <Grid item xs={12} md={8}>
+                      <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.5 }}
+                      >
+                        <Paper sx={{ p: 3, mb: 4 }}>
+                          <FileUpload onSuccess={handleFileUploadSuccess} onError={handleError} />
+                        </Paper>
+                      </motion.div>
+                      
+                      <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.5, delay: 0.2 }}
+                      >
+                        <FlashcardList
+                          flashcards={flashcards}
+                          onFlashcardsUpdate={handleFlashcardsUpdate}
+                          onError={handleError}
+                          customization={customization}
+                        />
+                      </motion.div>
+                    </Grid>
+                    
+                    <Grid item xs={12} md={4}>
+                      <motion.div
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.5, delay: 0.4 }}
+                      >
+                        <FlashcardCustomization
+                          customization={customization}
+                          onCustomizationChange={handleCustomizationChange}
+                          onExport={handleExport}
+                          flashcards={flashcards}
+                        />
+                      </motion.div>
+                    </Grid>
+                  </Grid>
+                </Box>
+              </Container>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-              <Grid item xs={12}>
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5, delay: 0.2 }}
-                >
-                  <FlashcardCustomization
-                    onCustomizationChange={handleCustomizationChange}
-                    onExport={handleExport}
-                    customization={customization}
-                  />
-                </motion.div>
-              </Grid>
-
-              {flashcards.length > 0 && (
-                <Grid item xs={12}>
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: 0.4 }}
-                  >
-                    <Paper elevation={3} sx={{ p: 3 }}>
-                      <FlashcardList
-                        flashcards={flashcards}
-                        onFlashcardsUpdate={handleFlashcardsUpdate}
-                        onError={handleError}
-                        customization={customization}
-                      />
-                    </Paper>
-                  </motion.div>
-                </Grid>
-              )}
-            </Grid>
-          </Box>
-        </Container>
+        <AuthDialog
+          open={showAuth}
+          onClose={handleAuthClose}
+          mode={authMode}
+          onSuccess={handleAuthSuccess}
+        />
 
         <HelpDialog open={showHelp} onClose={() => setShowHelp(false)} />
 
