@@ -1,16 +1,16 @@
+import os
+import tempfile
+import logging
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from services.ai_service import AIService
-import os
-import tempfile
 from fpdf import FPDF
 import genanki
 import json
-import logging
-from dotenv import load_dotenv
+import dotenv
 
 # Load environment variables
-load_dotenv()
+dotenv.load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
@@ -75,22 +75,92 @@ def export_pdf():
         if not data or 'flashcards' not in data:
             return jsonify({'error': 'No flashcards provided'}), 400
 
-        # Create PDF
+        customization = data.get('customization', {})
+        style = customization.get('style', 'Classic')
+        
+        # Create PDF with customization
         pdf = FPDF()
         pdf.add_page()
-        pdf.set_font("Arial", size=12)
         
-        # Add title
-        pdf.set_font("Arial", 'B', 16)
-        pdf.cell(200, 10, txt="Flashcards", ln=1, align='C')
-        pdf.set_font("Arial", size=12)
+        # Set font based on customization
+        font_family = customization.get('font', 'Arial')
+        font_size = int(customization.get('fontSize', 12))
         
-        # Add flashcards
+        # Add title with custom styling
+        pdf.set_font(font_family if font_family in ['Arial', 'Times'] else 'Arial', 
+                    style='B', 
+                    size=font_size + 6)
+        pdf.set_text_color(33, 150, 243)  # Primary blue color
+        pdf.cell(0, 20, txt="My Flashcards", ln=1, align='C')
+        pdf.ln(10)
+
+        # Style-specific settings
+        if style == 'Modern':
+            bg_color = (245, 245, 245)
+            border_color = (33, 150, 243)
+            question_color = (33, 150, 243)
+            answer_color = (85, 85, 85)
+        elif style == 'Minimalist':
+            bg_color = (255, 255, 255)
+            border_color = (200, 200, 200)
+            question_color = (0, 0, 0)
+            answer_color = (85, 85, 85)
+        elif style == 'Colorful':
+            bg_color = (240, 248, 255)
+            border_color = (33, 150, 243)
+            question_color = (156, 39, 176)
+            answer_color = (0, 150, 136)
+        else:  # Classic
+            bg_color = (250, 250, 250)
+            border_color = (180, 180, 180)
+            question_color = (33, 33, 33)
+            answer_color = (85, 85, 85)
+
+        # Add flashcards with custom styling
         for i, card in enumerate(data['flashcards'], 1):
-            pdf.cell(200, 10, txt=f"Card {i}", ln=1, align='L')
-            pdf.multi_cell(0, 10, txt=f"Question: {card['question']}")
-            pdf.multi_cell(0, 10, txt=f"Answer: {card['answer']}")
+            # Card container
+            pdf.set_fill_color(*bg_color)
+            pdf.set_draw_color(*border_color)
+            pdf.rect(10, pdf.get_y(), 190, 0, 'S')
+            pdf.ln(5)
+
+            # Card number
+            pdf.set_font(font_family if font_family in ['Arial', 'Times'] else 'Arial', 
+                        style='B', 
+                        size=font_size)
+            pdf.set_text_color(*question_color)
+            pdf.cell(0, 10, txt=f"Card {i}", ln=1, align='L')
+            
+            # Question
+            pdf.set_font(font_family if font_family in ['Arial', 'Times'] else 'Arial', 
+                        style='B', 
+                        size=font_size)
+            pdf.set_text_color(*question_color)
+            pdf.multi_cell(0, 10, txt="Question:", fill=True)
+            pdf.set_font(font_family if font_family in ['Arial', 'Times'] else 'Arial', 
+                        size=font_size)
+            pdf.multi_cell(0, 10, txt=card['question'])
+            pdf.ln(5)
+            
+            # Answer
+            pdf.set_font(font_family if font_family in ['Arial', 'Times'] else 'Arial', 
+                        style='B', 
+                        size=font_size)
+            pdf.set_text_color(*answer_color)
+            pdf.multi_cell(0, 10, txt="Answer:", fill=True)
+            pdf.set_font(font_family if font_family in ['Arial', 'Times'] else 'Arial', 
+                        size=font_size)
+            pdf.multi_cell(0, 10, txt=card['answer'])
             pdf.ln(10)
+
+            # Bottom border
+            pdf.set_draw_color(*border_color)
+            pdf.rect(10, pdf.get_y() - 5, 190, 0, 'S')
+            pdf.ln(15)
+
+            # Add new page if needed
+            if pdf.get_y() > 250:
+                pdf.add_page()
 
         # Save to temporary file
         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
@@ -114,18 +184,71 @@ def export_anki():
         if not data or 'flashcards' not in data:
             return jsonify({'error': 'No flashcards provided'}), 400
 
-        # Create Anki deck
+        customization = data.get('customization', {})
+        style = customization.get('style', 'Classic')
+        
+        # Create Anki deck with customization
         deck_id = 2059400110  # Random but fixed deck ID
         model_id = 1607392319  # Random but fixed model ID
         
         deck = genanki.Deck(
             deck_id,
-            'Generated Flashcards'
+            'My Flashcards'
         )
+
+        # Style-specific settings
+        if style == 'Modern':
+            primary_color = '#2196F3'
+            secondary_color = '#555555'
+            bg_color = '#f5f5f5'
+        elif style == 'Minimalist':
+            primary_color = '#000000'
+            secondary_color = '#555555'
+            bg_color = '#ffffff'
+        elif style == 'Colorful':
+            primary_color = '#9C27B0'
+            secondary_color = '#009688'
+            bg_color = '#f0f8ff'
+        else:  # Classic
+            primary_color = '#212121'
+            secondary_color = '#555555'
+            bg_color = '#fafafa'
+
+        # Create custom styling based on customization options
+        font_family = customization.get('font', 'Arial')
+        font_size = customization.get('fontSize', '16')
+        card_style = f"""
+        .card {{
+            font-family: {font_family}, Arial, sans-serif;
+            font-size: {font_size}px;
+            text-align: center;
+            color: {primary_color};
+            background-color: {bg_color};
+            padding: 20px;
+            max-width: 600px;
+            margin: 0 auto;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }}
+        .question {{
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: {primary_color};
+            font-size: {int(font_size) + 2}px;
+        }}
+        .answer {{
+            margin-top: 20px;
+            color: {secondary_color};
+        }}
+        hr {{
+            margin: 20px 0;
+            border: none;
+            border-top: 1px solid #ddd;
+        }}
+        """
 
         model = genanki.Model(
             model_id,
-            'Simple Model',
+            'Custom Model',
             fields=[
                 {'name': 'Question'},
                 {'name': 'Answer'},
@@ -133,10 +256,28 @@ def export_anki():
             templates=[
                 {
                     'name': 'Card 1',
-                    'qfmt': '{{Question}}',
-                    'afmt': '{{FrontSide}}<hr id="answer">{{Answer}}',
+                    'qfmt': '''
+                    <div class="card">
+                        <div class="question">
+                            {{Question}}
+                        </div>
+                    </div>
+                    ''',
+                    'afmt': '''
+                    <div class="card">
+                        <div class="question">
+                            {{Question}}
+                        </div>
+                        <hr id="answer">
+                        <div class="answer">
+                            {{Answer}}
+                        </div>
+                    </div>
+                    ''',
                 },
-            ])
+            ],
+            css=card_style
+        )
 
         # Add notes to deck
         for card in data['flashcards']:
