@@ -4,90 +4,225 @@ import {
   Card,
   CardContent,
   Typography,
-  Grid,
   IconButton,
-  Button
+  Grid,
+  Collapse,
+  Button,
+  Menu,
+  MenuItem,
+  Tooltip,
 } from '@mui/material';
-import FlipIcon from '@mui/icons-material/Flip';
+import {
+  Flip as FlipIcon,
+  AutoFixHigh as AutoFixHighIcon,
+  Translate as TranslateIcon,
+  MoreVert as MoreVertIcon,
+  Download as DownloadIcon,
+  Print as PrintIcon,
+} from '@mui/icons-material';
 
-const Flashcard = ({ question, answer }) => {
+const LANGUAGES = [
+  'French',
+  'Spanish',
+  'German',
+  'Italian',
+  'Portuguese',
+  'Chinese',
+  'Japanese',
+  'Korean',
+  'Russian',
+  'Arabic'
+];
+
+const Flashcard = ({ card, onAIOperation }) => {
   const [isFlipped, setIsFlipped] = useState(false);
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [languageMenuAnchor, setLanguageMenuAnchor] = useState(null);
+
+  const handleFlip = () => setIsFlipped(!isFlipped);
+  const handleMenuOpen = (event) => setAnchorEl(event.currentTarget);
+  const handleMenuClose = () => setAnchorEl(null);
+  const handleLanguageMenuOpen = (event) => setLanguageMenuAnchor(event.currentTarget);
+  const handleLanguageMenuClose = () => setLanguageMenuAnchor(null);
+
+  const handleImprove = () => {
+    onAIOperation('improve', {
+      question: card.question,
+      answer: card.answer
+    });
+    handleMenuClose();
+  };
+
+  const handleTranslate = (language) => {
+    onAIOperation('translate', {
+      question: card.question,
+      answer: card.answer,
+      target_language: language
+    });
+    handleLanguageMenuClose();
+    handleMenuClose();
+  };
 
   return (
     <Card 
       sx={{ 
-        height: '200px', 
-        display: 'flex', 
+        height: '100%',
+        display: 'flex',
         flexDirection: 'column',
-        cursor: 'pointer',
+        position: 'relative',
+        transition: 'transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out',
         '&:hover': {
+          transform: 'translateY(-4px)',
           boxShadow: 6,
         },
+        background: 'linear-gradient(to right bottom, #ffffff 0%, #f5f5f5 100%)',
       }}
-      onClick={() => setIsFlipped(!isFlipped)}
     >
-      <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
-        <Typography variant="h6" component="div" align="center">
-          {isFlipped ? answer : question}
-        </Typography>
-        <IconButton 
-          size="small" 
-          sx={{ position: 'absolute', bottom: 8, right: 8 }}
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsFlipped(!isFlipped);
-          }}
-        >
-          <FlipIcon />
-        </IconButton>
+      <CardContent sx={{ flexGrow: 1, pb: 1 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+          <Typography 
+            variant="caption" 
+            color="text.secondary"
+            sx={{
+              bgcolor: 'primary.main',
+              color: 'white',
+              px: 1,
+              py: 0.5,
+              borderRadius: 1,
+            }}
+          >
+            {isFlipped ? 'Answer' : 'Question'}
+          </Typography>
+          <Box>
+            <IconButton size="small" onClick={handleFlip}>
+              <FlipIcon />
+            </IconButton>
+            <IconButton size="small" onClick={handleMenuOpen}>
+              <MoreVertIcon />
+            </IconButton>
+          </Box>
+        </Box>
+
+        <Collapse in={!isFlipped} timeout="auto" unmountOnExit>
+          <Typography variant="body1">{card.question}</Typography>
+        </Collapse>
+        
+        <Collapse in={isFlipped} timeout="auto" unmountOnExit>
+          <Typography variant="body1">{card.answer}</Typography>
+        </Collapse>
       </CardContent>
+
+      <Menu
+        anchorEl={anchorEl}
+        open={Boolean(anchorEl)}
+        onClose={handleMenuClose}
+      >
+        <MenuItem onClick={handleImprove}>
+          <AutoFixHighIcon sx={{ mr: 1 }} />
+          Improve with AI
+        </MenuItem>
+        <MenuItem onClick={handleLanguageMenuOpen}>
+          <TranslateIcon sx={{ mr: 1 }} />
+          Translate
+        </MenuItem>
+      </Menu>
+
+      <Menu
+        anchorEl={languageMenuAnchor}
+        open={Boolean(languageMenuAnchor)}
+        onClose={handleLanguageMenuClose}
+      >
+        {LANGUAGES.map((lang) => (
+          <MenuItem key={lang} onClick={() => handleTranslate(lang)}>
+            {lang}
+          </MenuItem>
+        ))}
+      </Menu>
     </Card>
   );
 };
 
-const FlashcardList = ({ flashcards }) => {
-  const [currentIndex, setCurrentIndex] = useState(0);
-
-  if (!flashcards.length) {
-    return null;
-  }
-
-  const handleNext = () => {
-    setCurrentIndex((prev) => (prev + 1) % flashcards.length);
+const FlashcardList = ({ flashcards, onAIOperation }) => {
+  const handleExport = () => {
+    const content = flashcards
+      .map(card => `Q: ${card.question}\nA: ${card.answer}\n`)
+      .join('\n');
+    
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'flashcards.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
   };
 
-  const handlePrev = () => {
-    setCurrentIndex((prev) => (prev - 1 + flashcards.length) % flashcards.length);
+  const handlePrint = () => {
+    const printContent = flashcards
+      .map(card => `
+        <div style="page-break-inside: avoid; margin-bottom: 20px;">
+          <h3>Question:</h3>
+          <p>${card.question}</p>
+          <h3>Answer:</h3>
+          <p>${card.answer}</p>
+          <hr>
+        </div>
+      `)
+      .join('');
+
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Flashcards</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            @media print {
+              hr { display: none; }
+              div { page-break-inside: avoid; }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>Flashcards</h1>
+          ${printContent}
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.print();
   };
 
   return (
     <Box>
-      <Typography variant="h5" sx={{ mb: 3 }}>
-        Flashcard {currentIndex + 1} of {flashcards.length}
-      </Typography>
-      
-      <Grid container spacing={2} justifyContent="center" alignItems="center">
-        <Grid item xs={12} md={8}>
-          <Flashcard {...flashcards[currentIndex]} />
-        </Grid>
-      </Grid>
-
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3, gap: 2 }}>
-        <Button 
-          variant="contained" 
-          onClick={handlePrev}
-          disabled={flashcards.length <= 1}
-        >
-          Previous
-        </Button>
-        <Button 
-          variant="contained" 
-          onClick={handleNext}
-          disabled={flashcards.length <= 1}
-        >
-          Next
-        </Button>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3, alignItems: 'center' }}>
+        <Typography variant="h6" color="primary">
+          Your Flashcards ({flashcards.length})
+        </Typography>
+        
+        <Box>
+          <Tooltip title="Export as Text">
+            <IconButton onClick={handleExport} sx={{ mr: 1 }}>
+              <DownloadIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Print Flashcards">
+            <IconButton onClick={handlePrint}>
+              <PrintIcon />
+            </IconButton>
+          </Tooltip>
+        </Box>
       </Box>
+
+      <Grid container spacing={3}>
+        {flashcards.map((card, index) => (
+          <Grid item xs={12} sm={6} md={4} key={index}>
+            <Flashcard card={card} onAIOperation={onAIOperation} />
+          </Grid>
+        ))}
+      </Grid>
     </Box>
   );
 };
