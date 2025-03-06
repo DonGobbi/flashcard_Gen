@@ -1,173 +1,178 @@
-from groq import Groq
-from typing import List, Dict, Optional
-from config import config
+import os
+import json
 import logging
+from typing import List, Dict, Optional
+from groq import Groq
+from config import config
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 class AIService:
     def __init__(self):
-        logger.debug("Initializing AIService")
-        api_key = config.GROQ_API_KEY
-        logger.debug(f"API Key present: {bool(api_key)}")
-        self.client = Groq(api_key=api_key)
-        self.model = "mixtral-8x7b-32768"  # Using Mixtral for its strong performance and context length
-        logger.debug(f"AIService initialized with model: {self.model}")
+        """Initialize the AI service with API key."""
+        self.api_key = config.GROQ_API_KEY
+        if not self.api_key:
+            raise ValueError("GROQ_API_KEY is required")
+        self.client = Groq(api_key=self.api_key)
+        self.model = "mixtral-8x7b-32768"
 
-    async def generate_flashcards(self, content: str, num_cards: int = 5, subject: Optional[str] = None) -> List[Dict[str, str]]:
-        """Generate flashcards from content using AI."""
-        logger.debug(f"Generating {num_cards} flashcards for subject: {subject}")
-        prompt = self._create_flashcard_prompt(content, num_cards, subject)
-        
+    async def generate_flashcards(self, text: str, num_cards: int = 5, subject: str = "") -> List[Dict[str, str]]:
+        """Generate flashcards from text using AI."""
         try:
-            if not content.strip():
-                logger.error("Empty content provided")
-                raise ValueError("No content provided to generate flashcards from")
+            # Prepare the prompt
+            subject_context = f" about {subject}" if subject else ""
+            prompt = f"""Generate {num_cards} high-quality flashcards{subject_context} from the following text. 
+            Each flashcard should have a question and answer that tests understanding of key concepts.
+            Format your response as a JSON array of objects with 'question' and 'answer' fields.
 
-            logger.debug("Making API call to Groq")
-            try:
-                completion = self.client.chat.completions.create(
-                    messages=[
-                        {"role": "system", "content": "You are an expert educator specializing in creating effective flashcards for learning. Create clear, concise, and educational flashcards that follow best practices for learning and retention."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    model=self.model,
-                    temperature=0.7,
-                    max_tokens=2048
-                )
-            except Exception as api_error:
-                logger.error(f"Groq API error: {str(api_error)}")
-                if "api_key" in str(api_error).lower():
-                    raise ValueError("Invalid or missing Groq API key. Please check your configuration.")
-                raise ValueError(f"Error calling Groq API: {str(api_error)}")
-            
-            logger.debug("Successfully received response from Groq")
-            flashcards = self._parse_ai_response(completion.choices[0].message.content)
-            logger.debug(f"Generated {len(flashcards)} flashcards")
-            
+            Text: {text}
+
+            Response format:
+            [
+                {{"question": "...", "answer": "..."}},
+                {{"question": "...", "answer": "..."}}
+            ]
+            """
+
+            # Get completion from API
+            completion = self._get_completion(prompt)
+            if not completion:
+                raise ValueError("Failed to generate flashcards")
+
+            # Parse flashcards from completion
+            flashcards = self._parse_flashcard_list(completion)
             if not flashcards:
-                raise ValueError("No flashcards were generated from the content")
-                
+                raise ValueError("Failed to parse flashcards from API response")
+
             return flashcards
-            
+
         except Exception as e:
             logger.error(f"Error generating flashcards: {str(e)}")
-            raise ValueError(str(e))
+            raise
 
     async def improve_flashcard(self, question: str, answer: str) -> Dict[str, str]:
-        """Improve a single flashcard using AI."""
-        logger.debug(f"Improving flashcard - Question: {question[:50]}...")
-        prompt = f"""Improve this flashcard while maintaining its educational value:
-Question: {question}
-Answer: {answer}
-
-Make the question more precise and the answer more comprehensive yet concise.
-Return the improved version in this format:
-Question: [improved question]
-Answer: [improved answer]"""
-
+        """Improve a flashcard's content using AI."""
         try:
-            logger.debug("Making API call to Groq for improvement")
-            completion = self.client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": "You are an expert in educational content improvement."},
-                    {"role": "user", "content": prompt}
-                ],
-                model=self.model,
-                temperature=0.7
-            )
-            
-            logger.debug("Successfully received improvement response")
-            return self._parse_single_flashcard(completion.choices[0].message.content)
+            prompt = f"""Improve this flashcard by making the question more specific and the answer more comprehensive.
+            Current flashcard:
+            Question: {question}
+            Answer: {answer}
+
+            Format your response as a JSON object with 'question' and 'answer' fields.
+            Response format:
+            {{"question": "...", "answer": "..."}}
+            """
+
+            completion = self._get_completion(prompt)
+            if not completion:
+                raise ValueError("Failed to improve flashcard")
+
+            card = self._parse_flashcard(completion)
+            if not card or 'question' not in card or 'answer' not in card:
+                raise ValueError("Failed to parse improved flashcard")
+
+            return card
+
         except Exception as e:
             logger.error(f"Error improving flashcard: {str(e)}")
-            return {"question": question, "answer": answer}
+            raise
 
     async def translate_flashcard(self, question: str, answer: str, target_language: str) -> Dict[str, str]:
         """Translate a flashcard to the target language."""
-        logger.debug(f"Translating flashcard to {target_language}")
-        prompt = f"""Translate this flashcard to {target_language}:
-Question: {question}
-Answer: {answer}
-
-Ensure the translation maintains the educational value and context.
-Return the translated version in this format:
-Question: [translated question]
-Answer: [translated answer]"""
-
         try:
-            logger.debug("Making API call to Groq for translation")
-            completion = self.client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": f"You are an expert translator to {target_language}."},
-                    {"role": "user", "content": prompt}
-                ],
-                model=self.model,
-                temperature=0.7
-            )
-            
-            logger.debug("Successfully received translation response")
-            return self._parse_single_flashcard(completion.choices[0].message.content)
+            prompt = f"""Translate this flashcard to {target_language}.
+            Original flashcard:
+            Question: {question}
+            Answer: {answer}
+
+            Format your response as a JSON object with 'question' and 'answer' fields.
+            Response format:
+            {{"question": "...", "answer": "..."}}
+            """
+
+            completion = self._get_completion(prompt)
+            if not completion:
+                raise ValueError("Failed to translate flashcard")
+
+            card = self._parse_flashcard(completion)
+            if not card or 'question' not in card or 'answer' not in card:
+                raise ValueError("Failed to parse translated flashcard")
+
+            return card
+
         except Exception as e:
             logger.error(f"Error translating flashcard: {str(e)}")
-            return {"question": question, "answer": answer}
+            raise
 
-    def _create_flashcard_prompt(self, content: str, num_cards: int, subject: Optional[str] = None) -> str:
-        """Create a prompt for flashcard generation."""
-        subject_context = f" about {subject}" if subject else ""
-        return f"""Create {num_cards} educational flashcards{subject_context} from the following content:
+    def _get_completion(self, prompt: str) -> Optional[str]:
+        """Get completion from the AI model."""
+        try:
+            completion = self.client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a helpful AI that generates high-quality educational flashcards."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                model=self.model,
+                temperature=0.7,
+                max_tokens=1024,
+            )
 
-{content}
+            return completion.choices[0].message.content
 
-Follow these guidelines:
-1. Questions should be clear and specific
-2. Answers should be concise but comprehensive
-3. Focus on key concepts and important details
-4. Use appropriate terminology for the subject matter
-5. Ensure questions promote understanding, not just memorization
+        except Exception as e:
+            logger.error(f"Error getting completion from API: {str(e)}")
+            raise
 
-Return the flashcards in this format:
-Question: [question]
-Answer: [answer]
+    def _parse_flashcard_list(self, text: str) -> List[Dict[str, str]]:
+        """Parse a list of flashcards from JSON text."""
+        try:
+            # Find the JSON array in the text
+            start = text.find('[')
+            end = text.rfind(']') + 1
+            if start == -1 or end == 0:
+                raise ValueError("No JSON array found in response")
 
-[Repeat for each flashcard]"""
+            json_str = text[start:end]
+            flashcards = json.loads(json_str)
 
-    def _parse_ai_response(self, response: str) -> List[Dict[str, str]]:
-        """Parse AI response into a list of flashcards."""
-        logger.debug("Parsing AI response into flashcards")
-        flashcards = []
-        current_card = {}
-        
-        for line in response.split('\n'):
-            line = line.strip()
-            if line.startswith('Question:'):
-                if current_card and 'question' in current_card and 'answer' in current_card:
-                    flashcards.append(current_card)
-                current_card = {'question': line[9:].strip()}
-            elif line.startswith('Answer:'):
-                if 'question' in current_card:
-                    current_card['answer'] = line[7:].strip()
-        
-        if current_card and 'question' in current_card and 'answer' in current_card:
-            flashcards.append(current_card)
-        
-        logger.debug(f"Parsed {len(flashcards)} flashcards from response")
-        return flashcards
+            # Validate flashcards
+            if not isinstance(flashcards, list):
+                raise ValueError("Response is not a list")
 
-    def _parse_single_flashcard(self, response: str) -> Dict[str, str]:
-        """Parse AI response for a single flashcard."""
-        logger.debug("Parsing single flashcard response")
-        lines = response.split('\n')
-        card = {}
-        
-        for line in lines:
-            line = line.strip()
-            if line.startswith('Question:'):
-                card['question'] = line[9:].strip()
-            elif line.startswith('Answer:'):
-                card['answer'] = line[7:].strip()
-        
-        logger.debug(f"Parsed flashcard: {bool(card)}")
-        return card if card else {"question": "", "answer": ""}
+            for card in flashcards:
+                if not isinstance(card, dict) or 'question' not in card or 'answer' not in card:
+                    raise ValueError("Invalid flashcard format")
+
+            return flashcards
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing flashcard list: {str(e)}")
+            raise ValueError("Failed to parse flashcards from response")
+
+    def _parse_flashcard(self, text: str) -> Optional[Dict[str, str]]:
+        """Parse a single flashcard from JSON text."""
+        try:
+            # Find the JSON object in the text
+            start = text.find('{')
+            end = text.rfind('}') + 1
+            if start == -1 or end == 0:
+                raise ValueError("No JSON object found in response")
+
+            json_str = text[start:end]
+            card = json.loads(json_str)
+
+            # Validate card
+            if not isinstance(card, dict) or 'question' not in card or 'answer' not in card:
+                raise ValueError("Invalid flashcard format")
+
+            return card
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing flashcard: {str(e)}")
+            raise ValueError("Failed to parse flashcard from response")

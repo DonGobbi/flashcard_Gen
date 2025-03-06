@@ -1,228 +1,456 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
-  Card,
-  CardContent,
   Typography,
   IconButton,
   Grid,
-  Collapse,
-  Button,
+  Card,
+  CardContent,
+  CardActions,
+  Tooltip,
+  LinearProgress,
+  useTheme,
+  Zoom,
+  Chip,
   Menu,
   MenuItem,
-  Tooltip,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Select,
+  FormControl,
+  InputLabel
 } from '@mui/material';
 import {
-  Flip as FlipIcon,
-  AutoFixHigh as AutoFixHighIcon,
+  NavigateBefore as PrevIcon,
+  NavigateNext as NextIcon,
+  Refresh as ResetIcon,
+  AutoFixHigh as ImproveIcon,
   Translate as TranslateIcon,
-  MoreVert as MoreVertIcon,
-  Download as DownloadIcon,
+  Check as CorrectIcon,
+  Close as WrongIcon,
+  MoreVert as MoreIcon,
   Print as PrintIcon,
+  Download as DownloadIcon,
+  Share as ShareIcon
 } from '@mui/icons-material';
+import { motion, AnimatePresence } from 'framer-motion';
+import config from '../config';
 
 const LANGUAGES = [
-  'French',
-  'Spanish',
-  'German',
-  'Italian',
-  'Portuguese',
-  'Chinese',
-  'Japanese',
-  'Korean',
-  'Russian',
-  'Arabic'
+  'French', 'Spanish', 'German', 'Italian', 'Portuguese',
+  'Chinese', 'Japanese', 'Korean', 'Russian', 'Arabic'
 ];
 
-const Flashcard = ({ card, onAIOperation }) => {
+const FlashcardList = ({ flashcards, onStatsUpdate, customization }) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
-  const [anchorEl, setAnchorEl] = useState(null);
-  const [languageMenuAnchor, setLanguageMenuAnchor] = useState(null);
+  const [studyStartTime, setStudyStartTime] = useState(null);
+  const [correctAnswers, setCorrectAnswers] = useState(0);
+  const [totalAttempts, setTotalAttempts] = useState(0);
+  const [reviewTimes, setReviewTimes] = useState([]);
+  const [improving, setImproving] = useState(false);
+  const [translating, setTranslating] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState(null);
+  const [translateDialogOpen, setTranslateDialogOpen] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState('');
+  const theme = useTheme();
 
-  const handleFlip = () => setIsFlipped(!isFlipped);
-  const handleMenuOpen = (event) => setAnchorEl(event.currentTarget);
-  const handleMenuClose = () => setAnchorEl(null);
-  const handleLanguageMenuOpen = (event) => setLanguageMenuAnchor(event.currentTarget);
-  const handleLanguageMenuClose = () => setLanguageMenuAnchor(null);
+  useEffect(() => {
+    setStudyStartTime(Date.now());
+    return () => updateStats();
+  }, []);
 
-  const handleImprove = () => {
-    onAIOperation('improve', {
-      question: card.question,
-      answer: card.answer
-    });
-    handleMenuClose();
-  };
+  useEffect(() => {
+    if (totalAttempts > 0) {
+      updateStats();
+    }
+  }, [correctAnswers, totalAttempts, reviewTimes]);
 
-  const handleTranslate = (language) => {
-    onAIOperation('translate', {
-      question: card.question,
-      answer: card.answer,
-      target_language: language
-    });
-    handleLanguageMenuClose();
-    handleMenuClose();
-  };
-
-  return (
-    <Card 
-      sx={{ 
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        position: 'relative',
-        transition: 'transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out',
-        '&:hover': {
-          transform: 'translateY(-4px)',
-          boxShadow: 6,
-        },
-        background: 'linear-gradient(to right bottom, #ffffff 0%, #f5f5f5 100%)',
-      }}
-    >
-      <CardContent sx={{ flexGrow: 1, pb: 1 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-          <Typography 
-            variant="caption" 
-            color="text.secondary"
-            sx={{
-              bgcolor: 'primary.main',
-              color: 'white',
-              px: 1,
-              py: 0.5,
-              borderRadius: 1,
-            }}
-          >
-            {isFlipped ? 'Answer' : 'Question'}
-          </Typography>
-          <Box>
-            <IconButton size="small" onClick={handleFlip}>
-              <FlipIcon />
-            </IconButton>
-            <IconButton size="small" onClick={handleMenuOpen}>
-              <MoreVertIcon />
-            </IconButton>
-          </Box>
-        </Box>
-
-        <Collapse in={!isFlipped} timeout="auto" unmountOnExit>
-          <Typography variant="body1">{card.question}</Typography>
-        </Collapse>
-        
-        <Collapse in={isFlipped} timeout="auto" unmountOnExit>
-          <Typography variant="body1">{card.answer}</Typography>
-        </Collapse>
-      </CardContent>
-
-      <Menu
-        anchorEl={anchorEl}
-        open={Boolean(anchorEl)}
-        onClose={handleMenuClose}
-      >
-        <MenuItem onClick={handleImprove}>
-          <AutoFixHighIcon sx={{ mr: 1 }} />
-          Improve with AI
-        </MenuItem>
-        <MenuItem onClick={handleLanguageMenuOpen}>
-          <TranslateIcon sx={{ mr: 1 }} />
-          Translate
-        </MenuItem>
-      </Menu>
-
-      <Menu
-        anchorEl={languageMenuAnchor}
-        open={Boolean(languageMenuAnchor)}
-        onClose={handleLanguageMenuClose}
-      >
-        {LANGUAGES.map((lang) => (
-          <MenuItem key={lang} onClick={() => handleTranslate(lang)}>
-            {lang}
-          </MenuItem>
-        ))}
-      </Menu>
-    </Card>
-  );
-};
-
-const FlashcardList = ({ flashcards, onAIOperation }) => {
-  const handleExport = () => {
-    const content = flashcards
-      .map(card => `Q: ${card.question}\nA: ${card.answer}\n`)
-      .join('\n');
+  const updateStats = () => {
+    const successRate = totalAttempts > 0 ? Math.round((correctAnswers / totalAttempts) * 100) : 0;
+    const avgTime = reviewTimes.length > 0 
+      ? Math.round(reviewTimes.reduce((a, b) => a + b, 0) / reviewTimes.length)
+      : 0;
     
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'flashcards.txt';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
+    onStatsUpdate?.({
+      successRate,
+      averageTime: avgTime
+    });
   };
 
-  const handlePrint = () => {
-    const printContent = flashcards
-      .map(card => `
-        <div style="page-break-inside: avoid; margin-bottom: 20px;">
-          <h3>Question:</h3>
-          <p>${card.question}</p>
-          <h3>Answer:</h3>
-          <p>${card.answer}</p>
-          <hr>
-        </div>
-      `)
-      .join('');
-
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Flashcards</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 20px; }
-            @media print {
-              hr { display: none; }
-              div { page-break-inside: avoid; }
-            }
-          </style>
-        </head>
-        <body>
-          <h1>Flashcards</h1>
-          ${printContent}
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.print();
+  const handleNext = () => {
+    if (currentIndex < flashcards.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+      setIsFlipped(false);
+      recordReviewTime();
+    }
   };
+
+  const handlePrev = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex(prev => prev - 1);
+      setIsFlipped(false);
+      recordReviewTime();
+    }
+  };
+
+  const handleFlip = () => {
+    setIsFlipped(!isFlipped);
+  };
+
+  const handleReset = () => {
+    setCurrentIndex(0);
+    setIsFlipped(false);
+    setStudyStartTime(Date.now());
+    setCorrectAnswers(0);
+    setTotalAttempts(0);
+    setReviewTimes([]);
+  };
+
+  const recordReviewTime = () => {
+    const currentTime = Date.now();
+    if (studyStartTime) {
+      const reviewTime = Math.round((currentTime - studyStartTime) / 1000);
+      setReviewTimes(prev => [...prev, reviewTime]);
+      setStudyStartTime(currentTime);
+    }
+  };
+
+  const handleAnswer = (correct) => {
+    setTotalAttempts(prev => prev + 1);
+    if (correct) {
+      setCorrectAnswers(prev => prev + 1);
+    }
+    handleNext();
+  };
+
+  const handleImprove = async () => {
+    setImproving(true);
+    try {
+      const response = await fetch(`${config.API_BASE_URL}/api/improve`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          flashcard: flashcards[currentIndex],
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to improve flashcard');
+      }
+
+      const data = await response.json();
+      const updatedFlashcards = [...flashcards];
+      updatedFlashcards[currentIndex] = data.flashcard;
+      // Update flashcards through parent component
+    } catch (error) {
+      console.error('Error improving flashcard:', error);
+    } finally {
+      setImproving(false);
+    }
+  };
+
+  const handleTranslate = async () => {
+    if (!selectedLanguage) return;
+    
+    setTranslating(true);
+    setTranslateDialogOpen(false);
+    
+    try {
+      const response = await fetch(`${config.API_BASE_URL}/api/translate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          flashcard: flashcards[currentIndex],
+          target_language: selectedLanguage
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to translate flashcard');
+      }
+
+      const data = await response.json();
+      const updatedFlashcards = [...flashcards];
+      updatedFlashcards[currentIndex] = data.flashcard;
+      // Update flashcards through parent component
+    } catch (error) {
+      console.error('Error translating flashcard:', error);
+    } finally {
+      setTranslating(false);
+      setSelectedLanguage('');
+    }
+  };
+
+  const getCardStyle = () => {
+    const style = {
+      minHeight: 300,
+      cursor: 'pointer',
+      transform: isFlipped ? 'rotateY(180deg)' : 'none',
+      transformStyle: 'preserve-3d',
+      transition: customization?.animations ? 'transform 0.6s' : 'none',
+      position: 'relative',
+      backgroundColor: theme.palette.background.paper,
+      '&:hover': {
+        boxShadow: theme.shadows[6],
+      },
+    };
+
+    if (customization?.cardStyle === 'classic') {
+      return {
+        ...style,
+        border: `2px solid ${theme.palette.primary.main}`,
+        borderRadius: 8,
+      };
+    } else if (customization?.cardStyle === 'modern') {
+      return {
+        ...style,
+        borderRadius: 16,
+        background: `linear-gradient(135deg, ${theme.palette.background.paper} 0%, ${theme.palette.background.default} 100%)`,
+      };
+    } else if (customization?.cardStyle === 'minimalist') {
+      return {
+        ...style,
+        borderRadius: 4,
+        boxShadow: 'none',
+        border: `1px solid ${theme.palette.divider}`,
+      };
+    } else if (customization?.cardStyle === 'colorful') {
+      return {
+        ...style,
+        borderRadius: 12,
+        background: `linear-gradient(135deg, ${customization?.colorTheme?.primary}20 0%, ${customization?.colorTheme?.secondary}20 100%)`,
+      };
+    }
+
+    return style;
+  };
+
+  const getTypographyStyle = () => ({
+    fontFamily: customization?.font || theme.typography.fontFamily,
+    fontSize: customization?.fontSize || theme.typography.fontSize,
+    color: theme.palette.text.primary,
+    fontWeight: 500,
+    mb: 2
+  });
+
+  if (!flashcards.length) return null;
+
+  const progress = ((currentIndex + 1) / flashcards.length) * 100;
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3, alignItems: 'center' }}>
-        <Typography variant="h6" color="primary">
-          Your Flashcards ({flashcards.length})
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="h5" gutterBottom color="primary">
+          Study Your Flashcards
         </Typography>
-        
+        <LinearProgress 
+          variant="determinate" 
+          value={progress} 
+          sx={{ 
+            height: 10, 
+            borderRadius: 5,
+            backgroundColor: theme.palette.mode === 'light' ? '#e0e0e0' : '#424242',
+            '& .MuiLinearProgress-bar': {
+              borderRadius: 5,
+              background: `linear-gradient(45deg, ${customization?.colorTheme?.primary || '#2196F3'} 30%, ${customization?.colorTheme?.secondary || '#21CBF3'} 90%)`,
+            }
+          }} 
+        />
+        <Typography 
+          variant="body2" 
+          color="text.secondary" 
+          align="center"
+          sx={{ mt: 1 }}
+        >
+          Card {currentIndex + 1} of {flashcards.length}
+        </Typography>
+      </Box>
+
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={currentIndex + (isFlipped ? '-flipped' : '')}
+          initial={{ opacity: 0, rotateY: isFlipped ? -180 : 0 }}
+          animate={{ opacity: 1, rotateY: isFlipped ? 180 : 0 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: customization?.animations ? 0.5 : 0 }}
+          style={{ perspective: 1000 }}
+        >
+          <Card
+            elevation={3}
+            onClick={handleFlip}
+            sx={getCardStyle()}
+          >
+            <CardContent
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '100%',
+                p: 4,
+                backfaceVisibility: 'hidden',
+              }}
+            >
+              <Typography 
+                variant="h6" 
+                component="div" 
+                align="center"
+                sx={getTypographyStyle()}
+              >
+                {isFlipped ? flashcards[currentIndex].answer : flashcards[currentIndex].question}
+              </Typography>
+              <Chip
+                label={isFlipped ? "Answer" : "Question"}
+                color="primary"
+                size="small"
+                sx={{ mt: 2 }}
+              />
+            </CardContent>
+          </Card>
+        </motion.div>
+      </AnimatePresence>
+
+      <CardActions sx={{ justifyContent: 'space-between', mt: 3, flexWrap: 'wrap', gap: 1 }}>
         <Box>
-          <Tooltip title="Export as Text">
-            <IconButton onClick={handleExport} sx={{ mr: 1 }}>
-              <DownloadIcon />
+          <Tooltip title="Previous Card">
+            <IconButton 
+              onClick={handlePrev} 
+              disabled={currentIndex === 0}
+              color="primary"
+            >
+              <PrevIcon />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Print Flashcards">
-            <IconButton onClick={handlePrint}>
-              <PrintIcon />
+          <Tooltip title="Next Card">
+            <IconButton 
+              onClick={handleNext} 
+              disabled={currentIndex === flashcards.length - 1}
+              color="primary"
+            >
+              <NextIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Reset">
+            <IconButton onClick={handleReset} color="secondary">
+              <ResetIcon />
             </IconButton>
           </Tooltip>
         </Box>
-      </Box>
 
-      <Grid container spacing={3}>
-        {flashcards.map((card, index) => (
-          <Grid item xs={12} sm={6} md={4} key={index}>
-            <Flashcard card={card} onAIOperation={onAIOperation} />
-          </Grid>
-        ))}
-      </Grid>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Tooltip title="Mark as Correct">
+            <IconButton 
+              onClick={() => handleAnswer(true)}
+              color="success"
+              sx={{ backgroundColor: theme.palette.success.main + '20' }}
+            >
+              <CorrectIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Mark as Incorrect">
+            <IconButton 
+              onClick={() => handleAnswer(false)}
+              color="error"
+              sx={{ backgroundColor: theme.palette.error.main + '20' }}
+            >
+              <WrongIcon />
+            </IconButton>
+          </Tooltip>
+        </Box>
+
+        <Box>
+          <Tooltip title="Improve Card">
+            <IconButton 
+              onClick={handleImprove}
+              disabled={improving}
+              color="primary"
+              sx={{ backgroundColor: theme.palette.primary.main + '20' }}
+            >
+              <ImproveIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Translate Card">
+            <IconButton 
+              onClick={() => setTranslateDialogOpen(true)}
+              disabled={translating}
+              color="primary"
+              sx={{ backgroundColor: theme.palette.primary.main + '20' }}
+            >
+              <TranslateIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="More Options">
+            <IconButton 
+              onClick={(e) => setMenuAnchor(e.currentTarget)}
+              color="primary"
+            >
+              <MoreIcon />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </CardActions>
+
+      <Menu
+        anchorEl={menuAnchor}
+        open={Boolean(menuAnchor)}
+        onClose={() => setMenuAnchor(null)}
+      >
+        <MenuItem onClick={() => {
+          // Handle print
+          setMenuAnchor(null);
+        }}>
+          <PrintIcon sx={{ mr: 1 }} /> Print Card
+        </MenuItem>
+        <MenuItem onClick={() => {
+          // Handle download
+          setMenuAnchor(null);
+        }}>
+          <DownloadIcon sx={{ mr: 1 }} /> Download Card
+        </MenuItem>
+        <MenuItem onClick={() => {
+          // Handle share
+          setMenuAnchor(null);
+        }}>
+          <ShareIcon sx={{ mr: 1 }} /> Share Card
+        </MenuItem>
+      </Menu>
+
+      <Dialog open={translateDialogOpen} onClose={() => setTranslateDialogOpen(false)}>
+        <DialogTitle>Translate Flashcard</DialogTitle>
+        <DialogContent>
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>Target Language</InputLabel>
+            <Select
+              value={selectedLanguage}
+              onChange={(e) => setSelectedLanguage(e.target.value)}
+              label="Target Language"
+            >
+              {LANGUAGES.map((lang) => (
+                <MenuItem key={lang} value={lang}>{lang}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setTranslateDialogOpen(false)}>Cancel</Button>
+          <Button 
+            onClick={handleTranslate}
+            variant="contained"
+            disabled={!selectedLanguage}
+          >
+            Translate
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

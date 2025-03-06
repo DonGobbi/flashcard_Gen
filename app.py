@@ -1,85 +1,106 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import os
 from werkzeug.utils import secure_filename
+from werkzeug.exceptions import HTTPException
 import docx
 from pptx import Presentation
+import csv
 import pandas as pd
-from config import config
 from services.ai_service import AIService
 import asyncio
 from functools import wraps
 import uuid
+from dotenv import load_dotenv
+from config import Config
+import shutil
 
-app = Flask(__name__)
+# Load environment variables from .env file
+load_dotenv()
+
+app = Flask(__name__, static_folder='frontend/build')
 CORS(app)
 
 # Initialize configuration
-config.init_app(app)
-app.config['UPLOAD_FOLDER'] = config.UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = config.MAX_CONTENT_LENGTH
+Config.init_app(app)
 
-# Ensure upload directory exists
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+# Configure upload folder
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp')
+# Remove temp directory if it exists and recreate it
+if os.path.exists(UPLOAD_FOLDER):
+    shutil.rmtree(UPLOAD_FOLDER)
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# Configure allowed file extensions
+ALLOWED_EXTENSIONS = {'txt', 'docx', 'pptx', 'csv'}
+
+# Configure max content length (50MB)
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
 # Initialize AI service
 ai_service = AIService()
 
 def async_route(f):
     @wraps(f)
-    def wrapped(*args, **kwargs):
-        return asyncio.run(f(*args, **kwargs))
+    async def wrapped(*args, **kwargs):
+        return await f(*args, **kwargs)
     return wrapped
 
 def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in config.ALLOWED_EXTENSIONS
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def process_docx(file_path):
     """Extract content from DOCX files, preserving structure."""
     try:
+        if not os.path.exists(file_path):
+            raise ValueError(f"File not found: {file_path}")
+            
+        if not os.access(file_path, os.R_OK):
+            raise ValueError(f"File not readable: {file_path}")
+            
         doc = docx.Document(file_path)
-        content_parts = []
+        content = []
         
-        # Process headings and paragraphs
-        for paragraph in doc.paragraphs:
-            if paragraph.style.name.startswith('Heading'):
-                content_parts.append(f"\n{paragraph.text}\n")
-            elif paragraph.text.strip():
-                content_parts.append(paragraph.text)
+        # Extract text from paragraphs
+        for para in doc.paragraphs:
+            if para.text.strip():
+                content.append(para.text)
+                
+        # Extract text from tables
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    if cell.text.strip():
+                        content.append(cell.text)
         
-        return "\n".join(content_parts)
+        if not content:
+            raise ValueError("No content found in the document")
+            
+        return '\n\n'.join(content)
+        
+    except docx.opc.exceptions.PackageNotFoundError:
+        raise ValueError("Invalid or corrupted DOCX file")
     except Exception as e:
         app.logger.error(f"Error processing DOCX file: {str(e)}")
-        raise
+        raise ValueError(f"Failed to process DOCX file: {str(e)}")
 
 def process_pptx(file_path):
-    """Extract content from PPTX files, preserving slide structure."""
+    """Extract content from PPTX files."""
     try:
         prs = Presentation(file_path)
-        content_parts = []
-        
-        for slide_number, slide in enumerate(prs.slides, 1):
-            # Add slide title
-            if slide.shapes.title:
-                content_parts.append(f"\nSlide {slide_number}: {slide.shapes.title.text}\n")
-            
-            # Process all shapes containing text
+        content = []
+        for slide in prs.slides:
             for shape in slide.shapes:
                 if hasattr(shape, "text") and shape.text.strip():
-                    if shape != slide.shapes.title:  # Skip title as it's already added
-                        # Handle bullet points
-                        text = shape.text.strip()
-                        if text.startswith('•'):
-                            text = text.replace('•', '-')
-                        content_parts.append(text)
-        
-        return "\n".join(content_parts)
+                    content.append(shape.text)
+        return '\n\n'.join(content)
     except Exception as e:
         app.logger.error(f"Error processing PPTX file: {str(e)}")
         raise
 
 def process_txt(file_path):
-    """Process plain text files."""
+    """Process text files."""
     try:
         with open(file_path, 'r', encoding='utf-8') as file:
             return file.read()
@@ -91,135 +112,173 @@ def process_csv(file_path):
     """Process CSV files."""
     try:
         df = pd.read_csv(file_path)
-        content = []
-        for _, row in df.iterrows():
-            if len(df.columns) >= 2:
-                content.extend([str(row[0]), str(row[1])])
-        return "\n".join(content)
+        return '\n'.join([
+            ', '.join(map(str, row)) 
+            for row in df.values
+        ])
     except Exception as e:
         app.logger.error(f"Error processing CSV file: {str(e)}")
         raise
 
+@app.errorhandler(Exception)
+def handle_error(error):
+    """Global error handler to ensure JSON responses"""
+    error_message = str(error)
+    error_type = error.__class__.__name__
+    
+    app.logger.error(f"Error Type: {error_type}")
+    app.logger.error(f"Error Message: {error_message}")
+    
+    if isinstance(error, HTTPException):
+        status_code = error.code
+        message = error.description
+    else:
+        status_code = 500
+        message = f"{error_type}: {error_message}"
+    
+    response = {
+        "error": message,
+        "type": error_type
+    }
+    return jsonify(response), status_code
+
+# Serve React App
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve(path):
+    if path != "" and os.path.exists(app.static_folder + '/' + path):
+        return send_from_directory(app.static_folder, path)
+    else:
+        return send_from_directory(app.static_folder, 'index.html')
+
 @app.route('/api/upload', methods=['POST'])
 @async_route
 async def upload_file():
-    temp_file_path = None
+    temp_path = None
     try:
         if 'file' not in request.files:
-            return jsonify({'error': 'No file part'}), 400
+            return jsonify({"error": "No file provided"}), 400
         
         file = request.files['file']
         if file.filename == '':
-            return jsonify({'error': 'No selected file'}), 400
+            return jsonify({"error": "No file selected"}), 400
+            
+        if not allowed_file(file.filename):
+            return jsonify({"error": "File type not supported. Please upload a .txt, .docx, .pptx, or .csv file"}), 400
+
+        num_cards = request.form.get('num_cards', type=int, default=5)
+        subject = request.form.get('subject', '')
+
+        # Create a unique filename to avoid conflicts
+        filename = secure_filename(str(uuid.uuid4()) + '_' + file.filename)
+        temp_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            # Create a unique temporary file path
-            temp_filename = f"temp_{uuid.uuid4()}_{filename}"
-            temp_file_path = os.path.join(app.config['UPLOAD_FOLDER'], temp_filename)
-            
-            try:
-                # Save the file
-                file.save(temp_file_path)
-                
-                # Extract content based on file type
-                try:
-                    if filename.endswith('.docx'):
-                        content = process_docx(temp_file_path)
-                    elif filename.endswith('.pptx'):
-                        content = process_pptx(temp_file_path)
-                    elif filename.endswith('.txt'):
-                        content = process_txt(temp_file_path)
-                    elif filename.endswith('.csv'):
-                        content = process_csv(temp_file_path)
-                    else:
-                        return jsonify({'error': 'Unsupported file format'}), 400
-
-                    if not content.strip():
-                        return jsonify({'error': 'No content found in file'}), 400
-
-                    # Get additional parameters
-                    try:
-                        num_cards = int(request.form.get('num_cards', 5))
-                        if num_cards < 1 or num_cards > 20:
-                            return jsonify({'error': 'Number of cards must be between 1 and 20'}), 400
-                    except ValueError:
-                        return jsonify({'error': 'Invalid number of cards specified'}), 400
-
-                    subject = request.form.get('subject', None)
-                    
-                    # Generate flashcards using AI
-                    try:
-                        flashcards = await ai_service.generate_flashcards(content, num_cards, subject)
-                        return jsonify({'flashcards': flashcards})
-                    except ValueError as e:
-                        return jsonify({'error': str(e)}), 500
-                    
-                except Exception as e:
-                    app.logger.error(f"Error processing file content: {str(e)}")
-                    return jsonify({'error': f'Error processing file content: {str(e)}'}), 500
-            
-            except Exception as e:
-                app.logger.error(f"Error saving file: {str(e)}")
-                return jsonify({'error': f'Error saving file: {str(e)}'}), 500
-            
-            finally:
-                # Clean up the temporary file
-                if temp_file_path and os.path.exists(temp_file_path):
-                    try:
-                        os.remove(temp_file_path)
-                    except Exception as e:
-                        app.logger.error(f"Error removing temporary file: {str(e)}")
+        # Ensure temp directory exists
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
         
-        return jsonify({'error': 'Invalid file type'}), 400
-    
+        # Save file temporarily
+        try:
+            file.save(temp_path)
+            if not os.path.exists(temp_path):
+                raise ValueError("Failed to save file")
+            if not os.access(temp_path, os.R_OK):
+                raise ValueError("File saved but not readable")
+            file_size = os.path.getsize(temp_path)
+            if file_size == 0:
+                raise ValueError("File saved but is empty")
+            app.logger.info(f"File saved successfully: {temp_path} ({file_size} bytes)")
+        except Exception as e:
+            raise ValueError(f"Failed to save file: {str(e)}")
+
+        try:
+            # Extract text from file
+            if file.filename.endswith('.docx'):
+                text = process_docx(temp_path)
+            elif file.filename.endswith('.pptx'):
+                text = process_pptx(temp_path)
+            elif file.filename.endswith('.txt'):
+                text = process_txt(temp_path)
+            elif file.filename.endswith('.csv'):
+                text = process_csv(temp_path)
+            else:
+                raise ValueError("Unsupported file format")
+
+            if not text or not text.strip():
+                raise ValueError("No text content found in file")
+
+            app.logger.info(f"Successfully extracted text from {filename}")
+
+            # Generate flashcards using AI
+            flashcards = await ai_service.generate_flashcards(text, num_cards, subject)
+            if not flashcards:
+                raise ValueError("Failed to generate flashcards")
+            
+            app.logger.info(f"Successfully generated {len(flashcards)} flashcards")
+            return jsonify({"flashcards": flashcards})
+
+        except Exception as e:
+            app.logger.error(f"Error processing file {filename}: {str(e)}")
+            raise
+
     except Exception as e:
-        app.logger.error(f"Unexpected error: {str(e)}")
-        return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
-    
+        error_msg = str(e)
+        app.logger.error(f"Error in upload_file: {error_msg}")
+        return jsonify({"error": error_msg}), 500
+
     finally:
-        # Extra cleanup attempt for the temporary file
-        if temp_file_path and os.path.exists(temp_file_path):
+        # Clean up temp file
+        if temp_path and os.path.exists(temp_path):
             try:
-                os.remove(temp_file_path)
+                os.remove(temp_path)
+                app.logger.info(f"Cleaned up temp file: {temp_path}")
             except Exception as e:
-                app.logger.error(f"Error in final cleanup: {str(e)}")
+                app.logger.error(f"Error cleaning up temp file {temp_path}: {str(e)}")
 
 @app.route('/api/improve', methods=['POST'])
 @async_route
 async def improve_flashcard():
     try:
-        data = request.json
+        data = request.get_json()
         if not data or 'question' not in data or 'answer' not in data:
-            return jsonify({'error': 'Missing question or answer'}), 400
-        
+            return jsonify({"error": "Missing question or answer"}), 400
+
         improved = await ai_service.improve_flashcard(data['question'], data['answer'])
         return jsonify(improved)
+
     except Exception as e:
-        app.logger.error(f"Error improving flashcard: {str(e)}")
-        return jsonify({'error': f'Error improving flashcard: {str(e)}'}), 500
+        app.logger.error(f"Error in improve_flashcard: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/translate', methods=['POST'])
 @async_route
 async def translate_flashcard():
     try:
-        data = request.json
+        data = request.get_json()
         if not data or 'question' not in data or 'answer' not in data or 'target_language' not in data:
-            return jsonify({'error': 'Missing required fields'}), 400
+            return jsonify({"error": "Missing required fields"}), 400
         
         translated = await ai_service.translate_flashcard(
             data['question'], 
-            data['answer'], 
+            data['answer'],
             data['target_language']
         )
         return jsonify(translated)
+
     except Exception as e:
         app.logger.error(f"Error translating flashcard: {str(e)}")
-        return jsonify({'error': f'Error translating flashcard: {str(e)}'}), 500
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    return jsonify({'status': 'healthy', 'ai_service': bool(config.GROQ_API_KEY)})
+    return jsonify({"status": "healthy"}), 200
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    import asyncio
+    from hypercorn.config import Config
+    from hypercorn.asyncio import serve
+
+    config = Config()
+    config.bind = ["localhost:5000"]
+    config.use_reloader = True
+    
+    asyncio.run(serve(app, config))

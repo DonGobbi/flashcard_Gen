@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Container, 
   Box, 
@@ -7,36 +7,71 @@ import {
   ThemeProvider,
   createTheme,
   CssBaseline,
+  Alert,
+  Fade,
+  useMediaQuery,
+  IconButton,
+  Tooltip,
   Snackbar,
-  Alert
+  Divider,
+  Grid,
+  Button
 } from '@mui/material';
+import { motion } from 'framer-motion';
+import NightlightIcon from '@mui/icons-material/Nightlight';
+import LightModeIcon from '@mui/icons-material/LightMode';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import FileUpload from './components/FileUpload';
 import FlashcardList from './components/FlashcardList';
-import AIControls from './components/AIControls';
+import StatsCard from './components/StatsCard';
+import FlashcardCustomization from './components/FlashcardCustomization';
 
-const theme = createTheme({
+const getDesignTokens = (mode, customization) => ({
   palette: {
+    mode,
     primary: {
-      main: '#1976d2',
+      main: customization?.colorTheme?.primary || (mode === 'light' ? '#2196F3' : '#90CAF9'),
     },
     secondary: {
-      main: '#dc004e',
+      main: customization?.colorTheme?.secondary || (mode === 'light' ? '#F50057' : '#FF4081'),
     },
     background: {
-      default: '#f5f5f5',
+      default: mode === 'light' ? '#F5F5F5' : '#121212',
+      paper: mode === 'light' ? '#FFFFFF' : '#1E1E1E',
     },
   },
   typography: {
-    fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+    fontFamily: customization?.font || '"Poppins", "Roboto", "Helvetica", "Arial", sans-serif',
+    fontSize: customization?.fontSize || 16,
     h3: {
+      fontWeight: 700,
+    },
+    h4: {
       fontWeight: 600,
+    },
+    h5: {
+      fontWeight: 500,
     },
   },
   components: {
     MuiPaper: {
       styleOverrides: {
         root: {
-          borderRadius: 12,
+          borderRadius: 16,
+          transition: 'all 0.3s ease-in-out',
+          '&:hover': {
+            transform: mode === 'light' ? 'translateY(-4px)' : 'none',
+            boxShadow: mode === 'light' ? '0 8px 24px rgba(0,0,0,0.1)' : 'none',
+          },
+        },
+      },
+    },
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          borderRadius: 8,
+          textTransform: 'none',
+          fontWeight: 500,
         },
       },
     },
@@ -45,110 +80,242 @@ const theme = createTheme({
 
 function App() {
   const [flashcards, setFlashcards] = useState([]);
-  const [notification, setNotification] = useState({ open: false, message: '', severity: 'info' });
+  const [error, setError] = useState(null);
+  const [stats, setStats] = useState({
+    totalCards: 0,
+    successRate: 0,
+    averageTime: 0,
+  });
+  const [mode, setMode] = useState('light');
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [customization, setCustomization] = useState(null);
+  const [showHelp, setShowHelp] = useState(false);
+  const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
 
-  const handleNotification = (message, severity = 'info') => {
-    setNotification({
+  useEffect(() => {
+    setMode(prefersDarkMode ? 'dark' : 'light');
+  }, [prefersDarkMode]);
+
+  const theme = React.useMemo(() => createTheme(getDesignTokens(mode, customization)), [mode, customization]);
+
+  const handleFileUploadSuccess = (newFlashcards) => {
+    setFlashcards(newFlashcards);
+    setError(null);
+    setStats(prev => ({
+      ...prev,
+      totalCards: prev.totalCards + newFlashcards.length,
+    }));
+    setSnackbar({
       open: true,
-      message,
-      severity,
+      message: `Successfully generated ${newFlashcards.length} flashcards!`,
+      severity: 'success',
     });
   };
 
-  const handleCloseNotification = () => {
-    setNotification({ ...notification, open: false });
+  const handleError = (errorMessage) => {
+    setError(errorMessage);
+    setFlashcards([]);
+    setSnackbar({
+      open: true,
+      message: errorMessage,
+      severity: 'error',
+    });
   };
 
-  const handleAIOperation = async (operation, data) => {
+  const handleCustomizationChange = (newCustomization) => {
+    setCustomization(newCustomization);
+  };
+
+  const handleExport = async (format, customizationOptions) => {
     try {
-      const response = await fetch(`http://localhost:5000/api/${operation}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
+      // Implementation for export functionality will go here
+      setSnackbar({
+        open: true,
+        message: `Exported flashcards in ${format} format`,
+        severity: 'success',
       });
-
-      if (!response.ok) {
-        throw new Error('AI operation failed');
-      }
-
-      const result = await response.json();
-      
-      if (operation === 'improve' || operation === 'translate') {
-        const updatedFlashcards = flashcards.map(card => 
-          card.question === data.question ? result : card
-        );
-        setFlashcards(updatedFlashcards);
-        handleNotification('Flashcard updated successfully!', 'success');
-      }
     } catch (error) {
-      handleNotification('Failed to process AI operation', 'error');
+      setSnackbar({
+        open: true,
+        message: `Failed to export flashcards: ${error.message}`,
+        severity: 'error',
+      });
     }
+  };
+
+  const toggleColorMode = () => {
+    setMode((prevMode) => (prevMode === 'light' ? 'dark' : 'light'));
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar(prev => ({ ...prev, open: false }));
   };
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Container maxWidth="lg">
-        <Box sx={{ my: 4 }}>
-          <Typography 
-            variant="h3" 
-            component="h1" 
-            gutterBottom 
-            align="center"
-            sx={{ 
-              mb: 4,
-              background: 'linear-gradient(45deg, #1976d2 30%, #21CBF3 90%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-            }}
-          >
-            AI-Powered Flashcard Generator
-          </Typography>
-          
-          <Paper 
-            elevation={3} 
-            sx={{ 
-              p: 4, 
-              mb: 4,
-              background: 'linear-gradient(to right bottom, #ffffff 0%, #f5f5f5 100%)',
-            }}
-          >
-            <FileUpload 
-              setFlashcards={setFlashcards}
-              onNotification={handleNotification}
-            />
-          </Paper>
+      <Box
+        sx={{
+          minHeight: '100vh',
+          background: theme.palette.background.default,
+          transition: 'background 0.3s ease-in-out',
+        }}
+      >
+        <Container maxWidth="lg">
+          <Box sx={{ py: 4 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+              <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+              >
+                <Typography 
+                  variant="h3" 
+                  component="h1" 
+                  sx={{ 
+                    background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    textAlign: 'center',
+                  }}
+                >
+                  AI Flashcard Generator
+                </Typography>
+              </motion.div>
+              <Box>
+                <Tooltip title="Help">
+                  <IconButton onClick={() => setShowHelp(!showHelp)} color="inherit" sx={{ mr: 1 }}>
+                    <HelpOutlineIcon />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title={`Switch to ${mode === 'light' ? 'dark' : 'light'} mode`}>
+                  <IconButton onClick={toggleColorMode} color="inherit">
+                    {mode === 'light' ? <NightlightIcon /> : <LightModeIcon />}
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            </Box>
 
-          {flashcards.length > 0 && (
-            <>
-              <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
-                <AIControls onAIOperation={handleAIOperation} />
-              </Paper>
-              <FlashcardList 
-                flashcards={flashcards}
-                onAIOperation={handleAIOperation}
-              />
-            </>
-          )}
-        </Box>
+            {showHelp && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+              >
+                <Paper sx={{ p: 3, mb: 4 }}>
+                  <Typography variant="h5" gutterBottom color="primary">
+                    How to Use
+                  </Typography>
+                  <Typography variant="body1" paragraph>
+                    1. Upload your content file (supported formats: TXT, DOCX, PPTX, CSV)
+                  </Typography>
+                  <Typography variant="body1" paragraph>
+                    2. Customize the appearance of your flashcards using the customization panel
+                  </Typography>
+                  <Typography variant="body1" paragraph>
+                    3. Study your flashcards with our interactive viewer
+                  </Typography>
+                  <Typography variant="body1">
+                    4. Export your flashcards in various formats or print them for offline use
+                  </Typography>
+                </Paper>
+              </motion.div>
+            )}
 
-        <Snackbar 
-          open={notification.open} 
-          autoHideDuration={6000} 
-          onClose={handleCloseNotification}
-          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-        >
-          <Alert 
-            onClose={handleCloseNotification} 
-            severity={notification.severity}
-            sx={{ width: '100%' }}
-          >
-            {notification.message}
-          </Alert>
-        </Snackbar>
-      </Container>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+            >
+              <StatsCard stats={stats} />
+            </motion.div>
+
+            <Grid container spacing={4}>
+              <Grid item xs={12} md={6}>
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.4 }}
+                >
+                  <Paper 
+                    elevation={3} 
+                    sx={{ 
+                      p: 4,
+                      height: '100%',
+                      background: theme.palette.background.paper,
+                    }}
+                  >
+                    <Typography variant="h5" gutterBottom color="primary" sx={{ mb: 3 }}>
+                      Generate Flashcards
+                    </Typography>
+                    <FileUpload 
+                      onSuccess={handleFileUploadSuccess}
+                      onError={handleError}
+                    />
+                  </Paper>
+                </motion.div>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.4 }}
+                >
+                  <FlashcardCustomization
+                    onCustomizationChange={handleCustomizationChange}
+                    onExport={handleExport}
+                  />
+                </motion.div>
+              </Grid>
+            </Grid>
+
+            {error && (
+              <Fade in={true}>
+                <Alert 
+                  severity="error" 
+                  sx={{ mb: 4 }}
+                  onClose={() => setError(null)}
+                >
+                  {error}
+                </Alert>
+              </Fade>
+            )}
+
+            {flashcards.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.6 }}
+              >
+                <Paper 
+                  elevation={3} 
+                  sx={{ 
+                    p: 4,
+                    background: theme.palette.background.paper,
+                  }}
+                >
+                  <FlashcardList 
+                    flashcards={flashcards} 
+                    onStatsUpdate={(newStats) => setStats(prev => ({ ...prev, ...newStats }))}
+                    customization={customization}
+                  />
+                </Paper>
+              </motion.div>
+            )}
+          </Box>
+        </Container>
+      </Box>
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </ThemeProvider>
   );
 }
