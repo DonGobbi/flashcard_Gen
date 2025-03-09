@@ -1,519 +1,260 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Container, 
-  Box, 
-  Typography, 
-  CssBaseline, 
-  useMediaQuery,
-  IconButton,
-  Snackbar,
-  Alert,
-  Paper,
-  Grid,
-  ThemeProvider,
-  createTheme,
-  Tooltip,
-  Button
-} from '@mui/material';
-import { motion, AnimatePresence } from 'framer-motion';
-import Brightness4Icon from '@mui/icons-material/Brightness4';
-import Brightness7Icon from '@mui/icons-material/Brightness7';
-import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
-import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
-import FileUpload from './components/FileUpload';
-import FlashcardList from './components/FlashcardList';
-import FlashcardCustomization from './components/FlashcardCustomization';
-import HelpDialog from './components/HelpDialog';
+import React, { useState, useMemo, useEffect } from 'react';
+import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { auth } from './firebase';
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signInWithPopup,
+  GoogleAuthProvider,
+  signOut,
+  onAuthStateChanged,
+} from 'firebase/auth';
+import { SnackbarProvider, useSnackbar } from 'notistack';
 import LandingPage from './components/LandingPage';
 import AuthDialog from './components/AuthDialog';
+import Dashboard from './components/Dashboard';
+import FlashcardSets from './components/FlashcardSets';
+import FlashcardEditor from './components/FlashcardEditor';
+import StudyInterface from './components/StudyInterface';
+import StudyAnalytics from './components/StudyAnalytics';
+import Settings from './components/Settings';
+import RouteGuard from './components/RouteGuard';
 import AuthService from './services/authService';
-import config from './config';
 
-const getDesignTokens = (mode, customization) => ({
+const themeSettings = (mode) => ({
   palette: {
     mode,
-    ...(mode === 'light'
-      ? {
-          primary: {
-            main: customization?.primaryColor || '#2196f3',
-          },
-          secondary: {
-            main: customization?.secondaryColor || '#f50057',
-          },
-          background: {
-            default: '#f5f5f5',
-            paper: '#ffffff',
-          },
-        }
-      : {
-          primary: {
-            main: customization?.primaryColor || '#90caf9',
-          },
-          secondary: {
-            main: customization?.secondaryColor || '#f48fb1',
-          },
-          background: {
-            default: '#121212',
-            paper: '#1e1e1e',
-          },
-        }),
+    primary: {
+      main: '#2196f3',
+      light: '#64b5f6',
+      dark: '#1976d2',
+    },
+    secondary: {
+      main: '#f50057',
+      light: '#ff4081',
+      dark: '#c51162',
+    },
+    background: {
+      default: mode === 'light' ? '#f5f5f5' : '#121212',
+      paper: mode === 'light' ? '#ffffff' : '#1e1e1e',
+    },
   },
   typography: {
-    fontFamily: customization?.font || '"Roboto", "Helvetica", "Arial", sans-serif',
-    fontSize: customization?.fontSize || 14,
+    fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+    h1: {
+      fontSize: '2.5rem',
+      fontWeight: 500,
+    },
+    h2: {
+      fontSize: '2rem',
+      fontWeight: 500,
+    },
+    h3: {
+      fontSize: '1.75rem',
+      fontWeight: 500,
+    },
+    h4: {
+      fontSize: '1.5rem',
+      fontWeight: 500,
+    },
+    h5: {
+      fontSize: '1.25rem',
+      fontWeight: 500,
+    },
+    h6: {
+      fontSize: '1rem',
+      fontWeight: 500,
+    },
+  },
+  shape: {
+    borderRadius: 8,
   },
   components: {
-    MuiPaper: {
+    MuiButton: {
       styleOverrides: {
         root: {
-          transition: 'all 0.3s ease-in-out',
+          textTransform: 'none',
+          borderRadius: 8,
         },
       },
     },
     MuiCard: {
       styleOverrides: {
         root: {
-          transition: 'all 0.3s ease-in-out',
+          borderRadius: 12,
+          boxShadow: mode === 'light' 
+            ? '0 2px 4px rgba(0,0,0,0.1)' 
+            : '0 2px 4px rgba(0,0,0,0.3)',
+        },
+      },
+    },
+    MuiPaper: {
+      styleOverrides: {
+        root: {
+          backgroundImage: 'none',
         },
       },
     },
   },
 });
 
-function App() {
-  const [flashcards, setFlashcards] = useState([]);
-  const [mode, setMode] = useState('light');
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
-  const [customization, setCustomization] = useState({
-    style: 'Classic',
-    font: 'Roboto',
-    fontSize: 14,
-    primaryColor: '#2196f3',
-    secondaryColor: '#f50057',
-    animations: true,
+const AppContent = () => {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [mode, setMode] = useState(() => {
+    const savedMode = localStorage.getItem('themeMode');
+    return savedMode || 'light';
   });
-  const [showHelp, setShowHelp] = useState(false);
-  const [isImproving, setIsImproving] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [showAuth, setShowAuth] = useState(false);
-  const [authMode, setAuthMode] = useState('login');
-  const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
+  
+  const theme = useMemo(() => createTheme(themeSettings(mode)), [mode]);
+  const { enqueueSnackbar } = useSnackbar();
 
   useEffect(() => {
-    setMode(prefersDarkMode ? 'dark' : 'light');
-  }, [prefersDarkMode]);
-
-  const theme = React.useMemo(() => createTheme(getDesignTokens(mode, customization)), [mode, customization]);
-
-  const handleFileUploadSuccess = (newFlashcards) => {
-    setFlashcards(newFlashcards);
-    setSnackbar({
-      open: true,
-      message: `Successfully generated ${newFlashcards.length} flashcards!`,
-      severity: 'success',
+    const unsubscribe = AuthService.onAuthStateChange((user) => {
+      setUser(user);
+      setLoading(false);
     });
-  };
-
-  const handleError = (errorMessage) => {
-    setSnackbar({
-      open: true,
-      message: errorMessage,
-      severity: 'error',
-    });
-  };
-
-  const handleFlashcardsUpdate = (updatedFlashcards) => {
-    setFlashcards(updatedFlashcards);
-    setSnackbar({
-      open: true,
-      message: 'Flashcard updated successfully!',
-      severity: 'success',
-    });
-  };
-
-  const handleCustomizationChange = (newCustomization) => {
-    setCustomization(newCustomization);
-    setSnackbar({
-      open: true,
-      message: 'Design updated successfully!',
-      severity: 'success',
-    });
-  };
-
-  const handleExport = async (format, customizationOptions) => {
-    try {
-      setSnackbar({
-        open: true,
-        message: `Exporting flashcards in ${format} format...`,
-        severity: 'info',
-      });
-
-      if (format === 'print') {
-        const printWindow = window.open('', '_blank');
-        if (!printWindow) {
-          throw new Error('Pop-up blocked. Please allow pop-ups and try again.');
-        }
-
-        const printContent = `
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>Flashcards</title>
-              <style>
-                body { 
-                  font-family: ${customization.font}, Arial, sans-serif;
-                  margin: 20px;
-                  color: ${mode === 'dark' ? '#fff' : '#000'};
-                  background-color: ${mode === 'dark' ? '#121212' : '#fff'};
-                }
-                .flashcard { 
-                  border: 1px solid ${mode === 'dark' ? '#444' : '#ccc'}; 
-                  padding: 20px; 
-                  margin-bottom: 20px;
-                  page-break-inside: avoid;
-                  background-color: ${mode === 'dark' ? '#1e1e1e' : '#fff'};
-                }
-                .question { 
-                  font-weight: bold; 
-                  margin-bottom: 10px;
-                  color: ${customization.primaryColor};
-                }
-                .answer { 
-                  margin-top: 10px;
-                  color: ${mode === 'dark' ? '#ddd' : '#333'};
-                }
-                @media print {
-                  .flashcard { break-inside: avoid; }
-                  body { 
-                    color: #000;
-                    background-color: #fff;
-                  }
-                  .flashcard {
-                    border-color: #ccc;
-                    background-color: #fff;
-                  }
-                  .question { color: #000; }
-                  .answer { color: #333; }
-                }
-              </style>
-            </head>
-            <body>
-              <h1 style="color: ${customization.primaryColor}">My Flashcards</h1>
-              ${flashcards.map((card, index) => `
-                <div class="flashcard">
-                  <div class="question">Question ${index + 1}: ${card.question}</div>
-                  <div class="answer">Answer: ${card.answer}</div>
-                </div>
-              `).join('')}
-            </body>
-          </html>
-        `;
-
-        printWindow.document.write(printContent);
-        printWindow.document.close();
-        printWindow.print();
-
-        setSnackbar({
-          open: true,
-          message: 'Print window opened successfully!',
-          severity: 'success',
-        });
-        return;
-      }
-
-      let endpoint = '';
-      switch (format) {
-        case 'pdf':
-          endpoint = '/api/export/pdf';
-          break;
-        case 'anki':
-          endpoint = '/api/export/anki';
-          break;
-        default:
-          throw new Error('Unsupported export format');
-      }
-
-      const response = await fetch(`${config.API_BASE_URL}${endpoint}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...AuthService.getAuthHeaders(),
-        },
-        body: JSON.stringify({
-          flashcards,
-          customization
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to export flashcards in ${format} format`);
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `flashcards.${format === 'anki' ? 'apkg' : format}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
-      setSnackbar({
-        open: true,
-        message: `Successfully exported flashcards in ${format} format!`,
-        severity: 'success',
-      });
-    } catch (error) {
-      console.error('Export error:', error);
-      setSnackbar({
-        open: true,
-        message: error.message,
-        severity: 'error',
-      });
-    }
-  };
-
-  const handleImproveAllCards = async () => {
-    try {
-      setIsImproving(true);
-      setSnackbar({
-        open: true,
-        message: 'Improving all flashcards...',
-        severity: 'info',
-      });
-
-      const improvedCards = [];
-      for (const card of flashcards) {
-        const response = await fetch(`${config.API_BASE_URL}/api/improve`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...AuthService.getAuthHeaders(),
-          },
-          body: JSON.stringify({
-            flashcard: {
-              question: card.question,
-              answer: card.answer
-            }
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to improve flashcard');
-        }
-
-        const data = await response.json();
-        improvedCards.push(data.flashcard);
-      }
-
-      setFlashcards(improvedCards);
-      setSnackbar({
-        open: true,
-        message: 'Successfully improved all flashcards!',
-        severity: 'success',
-      });
-    } catch (error) {
-      console.error('Error improving cards:', error);
-      setSnackbar({
-        open: true,
-        message: 'Failed to improve flashcards. Please try again.',
-        severity: 'error',
-      });
-    } finally {
-      setIsImproving(false);
-    }
-  };
-
-  const handleLogin = () => {
-    setAuthMode('login');
-    setShowAuth(true);
-  };
-
-  const handleSignup = () => {
-    setAuthMode('signup');
-    setShowAuth(true);
-  };
-
-  const handleAuthClose = () => {
-    setShowAuth(false);
-  };
-
-  const handleAuthSuccess = () => {
-    setIsAuthenticated(true);
-    setShowAuth(false);
-    setSnackbar({
-      open: true,
-      message: 'Successfully logged in!',
-      severity: 'success',
-    });
-  };
-
-  const handleLogout = () => {
-    AuthService.logout();
-    setIsAuthenticated(false);
-    setFlashcards([]);
-    setSnackbar({
-      open: true,
-      message: 'Successfully logged out',
-      severity: 'success',
-    });
-  };
-
-  const toggleColorMode = () => {
-    setMode((prevMode) => (prevMode === 'light' ? 'dark' : 'light'));
-  };
-
-  const handleCloseSnackbar = () => {
-    setSnackbar(prev => ({ ...prev, open: false }));
-  };
-
-  useEffect(() => {
-    const checkAuth = () => {
-      const isAuth = AuthService.isAuthenticated();
-      setIsAuthenticated(isAuth);
-    };
-
-    checkAuth();
-    window.addEventListener('storage', checkAuth);
-    return () => window.removeEventListener('storage', checkAuth);
+    return () => unsubscribe();
   }, []);
+
+  const handleThemeToggle = () => {
+    setMode((prevMode) => {
+      const newMode = prevMode === 'light' ? 'dark' : 'light';
+      localStorage.setItem('themeMode', newMode);
+      return newMode;
+    });
+  };
+
+  const handleLogin = async (email, password) => {
+    try {
+      await AuthService.login(email, password);
+      enqueueSnackbar('Successfully logged in!', { variant: 'success' });
+    } catch (error) {
+      enqueueSnackbar(error.message, { variant: 'error' });
+      throw error;
+    }
+  };
+
+  const handleSignup = async (email, password) => {
+    try {
+      await AuthService.register(email, password);
+      enqueueSnackbar('Account created successfully!', { variant: 'success' });
+    } catch (error) {
+      enqueueSnackbar(error.message, { variant: 'error' });
+      throw error;
+    }
+  };
+
+  const handleGoogleAuth = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+      enqueueSnackbar('Successfully logged in with Google!', { variant: 'success' });
+    } catch (error) {
+      enqueueSnackbar(error.message, { variant: 'error' });
+      throw error;
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await AuthService.logout();
+      enqueueSnackbar('Successfully logged out!', { variant: 'success' });
+    } catch (error) {
+      enqueueSnackbar(error.message, { variant: 'error' });
+    }
+  };
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box
-        sx={{
-          minHeight: '100vh',
-          bgcolor: 'background.default',
-          transition: 'background-color 0.3s ease-in-out',
-        }}
-      >
-        <AnimatePresence mode="wait">
-          {!isAuthenticated ? (
-            <motion.div
-              key="landing"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            >
-              <LandingPage onLogin={handleLogin} onSignup={handleSignup} />
-            </motion.div>
-          ) : (
-            <motion.div
-              key="app"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            >
-              <Container maxWidth="lg">
-                <Box sx={{ py: 4 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-                    <Typography variant="h4" component="h1" color="primary" gutterBottom>
-                      Flashcard Generator
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                      {flashcards.length > 0 && (
-                        <Button
-                          variant="outlined"
-                          color="primary"
-                          startIcon={<AutoAwesomeIcon />}
-                          onClick={handleImproveAllCards}
-                          disabled={isImproving}
-                        >
-                          {isImproving ? 'Improving...' : 'Improve All Cards'}
-                        </Button>
-                      )}
-                      <Tooltip title="Help">
-                        <IconButton onClick={() => setShowHelp(true)} color="inherit">
-                          <HelpOutlineIcon />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title={`Switch to ${mode === 'light' ? 'dark' : 'light'} mode`}>
-                        <IconButton onClick={toggleColorMode} color="inherit">
-                          {mode === 'light' ? <Brightness4Icon /> : <Brightness7Icon />}
-                        </IconButton>
-                      </Tooltip>
-                      <Button
-                        variant="outlined"
-                        color="inherit"
-                        onClick={handleLogout}
-                      >
-                        Logout
-                      </Button>
-                    </Box>
-                  </Box>
+      <BrowserRouter>
+        <Routes>
+          {/* Public routes */}
+          <Route
+            path="/"
+            element={
+              !user ? (
+                <LandingPage />
+              ) : (
+                <Navigate to="/dashboard" replace />
+              )
+            }
+          />
+          <Route
+            path="/login"
+            element={
+              !user ? (
+                <AuthDialog
+                  mode="login"
+                  onSubmit={handleLogin}
+                  onGoogleAuth={handleGoogleAuth}
+                />
+              ) : (
+                <Navigate to="/dashboard" replace />
+              )
+            }
+          />
+          <Route
+            path="/signup"
+            element={
+              !user ? (
+                <AuthDialog
+                  mode="signup"
+                  onSubmit={handleSignup}
+                  onGoogleAuth={handleGoogleAuth}
+                />
+              ) : (
+                <Navigate to="/dashboard" replace />
+              )
+            }
+          />
 
-                  <Grid container spacing={4}>
-                    <Grid item xs={12} md={8}>
-                      <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5 }}
-                      >
-                        <Paper sx={{ p: 3, mb: 4 }}>
-                          <FileUpload onSuccess={handleFileUploadSuccess} onError={handleError} />
-                        </Paper>
-                      </motion.div>
-                      
-                      <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5, delay: 0.2 }}
-                      >
-                        <FlashcardList
-                          flashcards={flashcards}
-                          onFlashcardsUpdate={handleFlashcardsUpdate}
-                          onError={handleError}
-                          customization={customization}
-                        />
-                      </motion.div>
-                    </Grid>
-                    
-                    <Grid item xs={12} md={4}>
-                      <motion.div
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ duration: 0.5, delay: 0.4 }}
-                      >
-                        <FlashcardCustomization
-                          customization={customization}
-                          onCustomizationChange={handleCustomizationChange}
-                          onExport={handleExport}
-                          flashcards={flashcards}
-                        />
-                      </motion.div>
-                    </Grid>
-                  </Grid>
-                </Box>
-              </Container>
-            </motion.div>
-          )}
-        </AnimatePresence>
+          {/* Protected routes */}
+          <Route
+            path="/dashboard"
+            element={
+              <RouteGuard isAuthenticated={!!user} isLoading={loading}>
+                <Dashboard
+                  onLogout={handleLogout}
+                  onThemeToggle={handleThemeToggle}
+                  isDarkMode={mode === 'dark'}
+                />
+              </RouteGuard>
+            }
+          >
+            <Route index element={<FlashcardSets />} />
+            <Route path="sets" element={<FlashcardSets />} />
+            <Route path="sets/new" element={<FlashcardEditor />} />
+            <Route path="sets/:id" element={<FlashcardEditor />} />
+            <Route path="sets/:id/study" element={<StudyInterface />} />
+            <Route path="study" element={<FlashcardSets study />} />
+            <Route path="analytics" element={<StudyAnalytics />} />
+            <Route path="settings" element={<Settings onThemeToggle={handleThemeToggle} isDarkMode={mode === 'dark'} />} />
+          </Route>
 
-        <AuthDialog
-          open={showAuth}
-          onClose={handleAuthClose}
-          mode={authMode}
-          onSuccess={handleAuthSuccess}
-        />
-
-        <HelpDialog open={showHelp} onClose={() => setShowHelp(false)} />
-
-        <Snackbar
-          open={snackbar.open}
-          autoHideDuration={6000}
-          onClose={handleCloseSnackbar}
-          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-        >
-          <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
-            {snackbar.message}
-          </Alert>
-        </Snackbar>
-      </Box>
+          {/* Fallback route */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
     </ThemeProvider>
   );
-}
+};
+
+const App = () => {
+  return (
+    <SnackbarProvider 
+      maxSnack={3} 
+      anchorOrigin={{
+        vertical: 'bottom',
+        horizontal: 'right',
+      }}
+      autoHideDuration={3000}
+    >
+      <AppContent />
+    </SnackbarProvider>
+  );
+};
 
 export default App;

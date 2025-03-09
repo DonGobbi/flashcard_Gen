@@ -1,89 +1,140 @@
 import React from 'react';
-import { motion } from 'framer-motion';
 import {
   Box,
+  Button,
   Container,
   Typography,
-  Button,
   Grid,
-  Paper,
+  Card,
+  CardContent,
   useTheme,
 } from '@mui/material';
+import { motion } from 'framer-motion';
 import {
-  School as SchoolIcon,
-  AutoAwesome as AutoAwesomeIcon,
-  Translate as TranslateIcon,
-  ImportExport as ImportExportIcon,
+  AutoStories,
+  Brush,
+  CloudUpload,
+  Translate,
+  Share,
+  Psychology,
 } from '@mui/icons-material';
 
-const FeatureCard = ({ icon, title, description, delay }) => {
+const FeatureCard = ({ icon, title, description }) => {
   const theme = useTheme();
   
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 50 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay }}
+    <Card
+      component={motion.div}
+      whileHover={{ 
+        y: -5,
+        boxShadow: theme.shadows[8],
+      }}
+      transition={{ duration: 0.2 }}
+      sx={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        borderRadius: 3,
+        overflow: 'hidden',
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+      }}
     >
-      <Paper
-        elevation={3}
-        sx={{
-          p: 3,
-          height: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          textAlign: 'center',
-          background: theme.palette.background.paper,
-          '&:hover': {
-            transform: 'translateY(-8px)',
-            transition: 'transform 0.3s ease-in-out',
-          },
-        }}
-      >
-        <Box sx={{ color: 'primary.main', mb: 2 }}>
+      <CardContent sx={{ flexGrow: 1, textAlign: 'center', p: 3 }}>
+        <Box
+          sx={{
+            display: 'inline-flex',
+            p: 2,
+            borderRadius: '50%',
+            bgcolor: 'primary.main',
+            color: 'primary.contrastText',
+            mb: 2,
+          }}
+        >
           {icon}
         </Box>
-        <Typography variant="h6" gutterBottom>
+        <Typography variant="h6" component="h3" gutterBottom>
           {title}
         </Typography>
         <Typography variant="body2" color="text.secondary">
           {description}
         </Typography>
-      </Paper>
-    </motion.div>
+      </CardContent>
+    </Card>
   );
 };
 
-const LandingPage = ({ onLogin, onSignup }) => {
-  const theme = useTheme();
+const features = [
+  {
+    icon: <AutoStories fontSize="large" />,
+    title: 'Smart Flashcards',
+    description: 'Create AI-powered flashcards from your notes, textbooks, or any learning material.',
+  },
+  {
+    icon: <Brush fontSize="large" />,
+    title: 'Customizable Design',
+    description: 'Choose from multiple card styles, fonts, and color themes to match your preferences.',
+  },
+  {
+    icon: <CloudUpload fontSize="large" />,
+    title: 'Easy Import',
+    description: 'Upload files in various formats and automatically generate organized flashcard sets.',
+  },
+  {
+    icon: <Translate fontSize="large" />,
+    title: 'Translation Support',
+    description: 'Study in multiple languages with built-in translation capabilities.',
+  },
+  {
+    icon: <Share fontSize="large" />,
+    title: 'Export & Share',
+    description: 'Export your flashcards to PDF or share them with friends and study groups.',
+  },
+  {
+    icon: <Psychology fontSize="large" />,
+    title: 'Smart Learning',
+    description: 'Track your progress and get personalized suggestions for improvement.',
+  },
+];
 
+const LandingPage = ({ onLogin, onSignup }) => {
   return (
-    <Box sx={{ minHeight: '100vh', overflow: 'hidden' }}>
+    <Box component="main">
       {/* Hero Section */}
       <Box
         sx={{
-          background: theme.palette.mode === 'dark' 
-            ? 'linear-gradient(45deg, #1a237e 30%, #311b92 90%)'
-            : 'linear-gradient(45deg, #42a5f5 30%, #3f51b5 90%)',
-          color: 'white',
-          pt: 15,
-          pb: 20,
+          position: 'relative',
+          overflow: 'hidden',
+          pt: { xs: 8, md: 12 },
+          pb: { xs: 8, md: 12 },
         }}
       >
         <Container maxWidth="lg">
           <Grid container spacing={4} alignItems="center">
             <Grid item xs={12} md={6}>
               <motion.div
-                initial={{ opacity: 0, x: -50 }}
+                initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.5 }}
               >
-                <Typography variant="h2" gutterBottom fontWeight="bold">
-                  Master Any Subject with Smart Flashcards
+                <Typography
+                  component="h1"
+                  variant="h2"
+                  sx={{
+                    fontWeight: 700,
+                    mb: 3,
+                    background: 'linear-gradient(45deg, #1976d2, #42a5f5)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                  }}
+                >
+                  Smart Flashcards for Better Learning
                 </Typography>
-                <Typography variant="h5" paragraph sx={{ mb: 4, opacity: 0.9 }}>
-                  Create, customize, and study flashcards enhanced by AI technology
+                <Typography
+                  variant="h5"
+                  color="text.secondary"
+                  sx={{ mb: 4 }}
+                >
+                  Transform your study materials into effective flashcards using AI. Learn smarter, not harder.
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 2 }}>
                   <Button
@@ -91,11 +142,11 @@ const LandingPage = ({ onLogin, onSignup }) => {
                     size="large"
                     onClick={onSignup}
                     sx={{
-                      backgroundColor: 'white',
-                      color: 'primary.main',
-                      '&:hover': {
-                        backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                      },
+                      px: 4,
+                      py: 1.5,
+                      borderRadius: 2,
+                      textTransform: 'none',
+                      fontSize: '1.1rem',
                     }}
                   >
                     Get Started
@@ -105,156 +156,36 @@ const LandingPage = ({ onLogin, onSignup }) => {
                     size="large"
                     onClick={onLogin}
                     sx={{
-                      borderColor: 'white',
-                      color: 'white',
-                      '&:hover': {
-                        borderColor: 'rgba(255, 255, 255, 0.9)',
-                        backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                      },
+                      px: 4,
+                      py: 1.5,
+                      borderRadius: 2,
+                      textTransform: 'none',
+                      fontSize: '1.1rem',
                     }}
                   >
-                    Login
+                    Sign In
                   </Button>
                 </Box>
               </motion.div>
             </Grid>
             <Grid item xs={12} md={6}>
               <motion.div
-                initial={{ opacity: 0, y: 50 }}
-                animate={{ opacity: 1, y: 0 }}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.5, delay: 0.2 }}
               >
                 <Box
+                  component="img"
+                  src="/hero-image.png"
+                  alt="Flashcard Generator"
                   sx={{
-                    position: 'relative',
-                    height: 400,
-                    backgroundColor: 'background.paper',
-                    borderRadius: 4,
-                    boxShadow: 3,
-                    overflow: 'hidden',
+                    width: '100%',
+                    height: 'auto',
+                    maxWidth: 600,
+                    display: 'block',
+                    margin: '0 auto',
                   }}
-                >
-                  <motion.div
-                    animate={{
-                      y: [-400, 0, 0, -400],
-                    }}
-                    transition={{
-                      duration: 10,
-                      repeat: Infinity,
-                      repeatType: 'loop',
-                      times: [0, 0.3, 0.7, 1],
-                    }}
-                  >
-                    {/* Demo Card 1 */}
-                    <Paper
-                      sx={{
-                        m: 2,
-                        p: 3,
-                        borderRadius: 2,
-                        backgroundColor: '#f5f5f5',
-                        border: '1px solid #e0e0e0',
-                      }}
-                    >
-                      <Typography variant="h6" gutterBottom color="primary">
-                        What is photosynthesis?
-                      </Typography>
-                      <Typography variant="body1" color="text.secondary">
-                        Photosynthesis is the process by which plants convert light energy into chemical energy to produce glucose from carbon dioxide and water.
-                      </Typography>
-                    </Paper>
-
-                    {/* Demo Card 2 */}
-                    <Paper
-                      sx={{
-                        m: 2,
-                        p: 3,
-                        borderRadius: 2,
-                        backgroundColor: '#e3f2fd',
-                        border: '1px solid #90caf9',
-                      }}
-                    >
-                      <Typography variant="h6" gutterBottom color="primary">
-                        What is the capital of France?
-                      </Typography>
-                      <Typography variant="body1" color="text.secondary">
-                        Paris is the capital city of France, known for its iconic Eiffel Tower, world-class museums, and rich cultural heritage.
-                      </Typography>
-                    </Paper>
-
-                    {/* Demo Card 3 */}
-                    <Paper
-                      sx={{
-                        m: 2,
-                        p: 3,
-                        borderRadius: 2,
-                        backgroundColor: '#f3e5f5',
-                        border: '1px solid #ce93d8',
-                      }}
-                    >
-                      <Typography variant="h6" gutterBottom color="primary">
-                        What is Newton's First Law?
-                      </Typography>
-                      <Typography variant="body1" color="text.secondary">
-                        Newton's First Law states that an object will remain at rest or in uniform motion unless acted upon by an external force.
-                      </Typography>
-                    </Paper>
-                  </motion.div>
-
-                  {/* Overlay gradients for smooth transition */}
-                  <Box
-                    sx={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      height: 50,
-                      background: 'linear-gradient(to bottom, rgba(255,255,255,1), rgba(255,255,255,0))',
-                      pointerEvents: 'none',
-                    }}
-                  />
-                  <Box
-                    sx={{
-                      position: 'absolute',
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      height: 50,
-                      background: 'linear-gradient(to top, rgba(255,255,255,1), rgba(255,255,255,0))',
-                      pointerEvents: 'none',
-                    }}
-                  />
-
-                  {/* Request Demo Button */}
-                  <Box
-                    sx={{
-                      position: 'absolute',
-                      bottom: 20,
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                    }}
-                  >
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      onClick={onSignup}
-                      sx={{
-                        borderRadius: 5,
-                        px: 4,
-                        py: 1,
-                        fontSize: '1.1rem',
-                        fontWeight: 'bold',
-                        textTransform: 'none',
-                        boxShadow: 3,
-                        '&:hover': {
-                          transform: 'scale(1.05)',
-                          transition: 'transform 0.2s',
-                        },
-                      }}
-                    >
-                      Request Demo
-                    </Button>
-                  </Box>
-                </Box>
+                />
               </motion.div>
             </Grid>
           </Grid>
@@ -262,157 +193,40 @@ const LandingPage = ({ onLogin, onSignup }) => {
       </Box>
 
       {/* Features Section */}
-      <Container maxWidth="lg" sx={{ mt: -10, mb: 8, position: 'relative' }}>
-        <Grid container spacing={4}>
-          <Grid item xs={12} sm={6} md={3}>
-            <FeatureCard
-              icon={<SchoolIcon sx={{ fontSize: 40 }} />}
-              title="Smart Learning"
-              description="AI-powered flashcard generation and improvement suggestions"
-              delay={0.3}
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <FeatureCard
-              icon={<AutoAwesomeIcon sx={{ fontSize: 40 }} />}
-              title="Beautiful Design"
-              description="Multiple card styles and customization options"
-              delay={0.4}
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <FeatureCard
-              icon={<TranslateIcon sx={{ fontSize: 40 }} />}
-              title="Translation Support"
-              description="Translate your flashcards into multiple languages"
-              delay={0.5}
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <FeatureCard
-              icon={<ImportExportIcon sx={{ fontSize: 40 }} />}
-              title="Export Options"
-              description="Export to PDF or Anki for flexible studying"
-              delay={0.6}
-            />
-          </Grid>
-        </Grid>
-      </Container>
-
-      {/* Feature Highlights Section */}
-      <Container maxWidth="lg" sx={{ mt: 8 }}>
-        <Grid container spacing={4}>
-          <Grid item xs={12}>
-            <Typography variant="h4" gutterBottom align="center" color="primary">
-              Features that make learning effortless
-            </Typography>
-          </Grid>
-          {[
-            {
-              title: 'Smart Flashcard Generation',
-              description: 'Upload your study material and let AI create perfect flashcards instantly',
-              icon: '🤖',
-            },
-            {
-              title: 'Multiple Card Styles',
-              description: 'Choose from Classic, Modern, Minimalist, or Colorful designs',
-              icon: '🎨',
-            },
-            {
-              title: 'AI-Powered Improvements',
-              description: 'Enhance your flashcards with AI suggestions and refinements',
-              icon: '✨',
-            },
-            {
-              title: 'Progress Tracking',
-              description: 'Monitor your success rate and average review time',
-              icon: '📊',
-            },
-            {
-              title: 'Export Options',
-              description: 'Export to PDF, Anki, or share with friends',
-              icon: '📤',
-            },
-            {
-              title: 'Translation Support',
-              description: 'Translate cards to multiple languages for language learning',
-              icon: '🌍',
-            },
-          ].map((feature, index) => (
-            <Grid item xs={12} sm={6} md={4} key={index}>
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-              >
-                <Paper
-                  sx={{
-                    p: 3,
-                    height: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    textAlign: 'center',
-                    borderRadius: 4,
-                    transition: 'transform 0.2s, box-shadow 0.2s',
-                    '&:hover': {
-                      transform: 'translateY(-4px)',
-                      boxShadow: 4,
-                    },
-                  }}
-                >
-                  <Typography variant="h2" sx={{ mb: 2 }}>
-                    {feature.icon}
-                  </Typography>
-                  <Typography variant="h6" gutterBottom>
-                    {feature.title}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {feature.description}
-                  </Typography>
-                </Paper>
-              </motion.div>
-            </Grid>
-          ))}
-        </Grid>
-
-        {/* Call to Action Section */}
-        <Box sx={{ mt: 8, textAlign: 'center' }}>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <Typography variant="h4" gutterBottom color="primary">
-              Ready to transform your learning experience?
-            </Typography>
-            <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-              Join thousands of students who are already using our smart flashcard generator.
-            </Typography>
-            <Button
-              variant="contained"
-              color="primary"
-              size="large"
-              onClick={onSignup}
-              sx={{
-                borderRadius: 5,
-                px: 6,
-                py: 1.5,
-                fontSize: '1.2rem',
-                fontWeight: 'bold',
-                textTransform: 'none',
-                boxShadow: 3,
-                '&:hover': {
-                  transform: 'scale(1.05)',
-                  transition: 'transform 0.2s',
-                },
-              }}
+      <Box sx={{ py: { xs: 8, md: 12 }, bgcolor: 'background.paper' }}>
+        <Container maxWidth="lg">
+          <Box sx={{ textAlign: 'center', mb: 8 }}>
+            <Typography
+              variant="h3"
+              component="h2"
+              sx={{ fontWeight: 600, mb: 2 }}
             >
-              Get Started for Free
-            </Button>
-          </motion.div>
-        </Box>
-      </Container>
+              Features
+            </Typography>
+            <Typography
+              variant="h6"
+              color="text.secondary"
+              sx={{ maxWidth: 600, mx: 'auto' }}
+            >
+              Everything you need to create and study with effective flashcards
+            </Typography>
+          </Box>
+
+          <Grid container spacing={4}>
+            {features.map((feature, index) => (
+              <Grid item xs={12} sm={6} md={4} key={index}>
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: index * 0.1 }}
+                >
+                  <FeatureCard {...feature} />
+                </motion.div>
+              </Grid>
+            ))}
+          </Grid>
+        </Container>
+      </Box>
     </Box>
   );
 };

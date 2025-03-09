@@ -1,237 +1,218 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Button,
-  Typography,
-  CircularProgress,
   TextField,
-  useTheme,
-  Fade,
+  Typography,
   Paper,
-  Tooltip,
+  Slider,
   IconButton,
+  CircularProgress,
+  Alert,
+  useTheme,
 } from '@mui/material';
 import {
-  CloudUpload as UploadIcon,
-  Delete as DeleteIcon,
-  Add as AddIcon,
-  Settings as SettingsIcon,
+  CloudUpload as CloudUploadIcon,
+  YouTube as YouTubeIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
-import { motion } from 'framer-motion';
-import config from '../config';
+import { motion, AnimatePresence } from 'framer-motion';
+import FlashcardService from '../services/flashcardService';
+import ApiService from '../services/apiService';
 
-const FileUpload = ({ onSuccess, onError }) => {
-  const [file, setFile] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [numCards, setNumCards] = useState(5);
-  const [subject, setSubject] = useState('');
-  const fileInputRef = useRef(null);
+const FileUpload = ({ onFlashcardsGenerated }) => {
   const theme = useTheme();
+  const [file, setFile] = useState(null);
+  const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [numCards, setNumCards] = useState(5);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
 
-  const handleFileSelect = (event) => {
+  const handleFileChange = (event) => {
     const selectedFile = event.target.files[0];
     if (selectedFile) {
-      if (validateFile(selectedFile)) {
-        setFile(selectedFile);
-      } else {
-        onError('Invalid file type. Please upload a .txt, .docx, .pptx, or .csv file');
-        event.target.value = null;
-      }
+      setFile(selectedFile);
+      setYoutubeUrl('');
+      setError('');
     }
   };
 
-  const validateFile = (file) => {
-    const allowedTypes = [
-      'text/plain',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'text/csv',
-    ];
-    return allowedTypes.includes(file.type);
+  const handleUrlChange = (event) => {
+    setYoutubeUrl(event.target.value);
+    setFile(null);
+    setError('');
   };
 
-  const handleUpload = async () => {
-    if (!file) {
-      onError('Please select a file first');
-      return;
-    }
+  const handleNumCardsChange = (event, newValue) => {
+    setNumCards(newValue);
+  };
 
+  const clearFile = () => {
+    setFile(null);
+    setError('');
+  };
+
+  const clearUrl = () => {
+    setYoutubeUrl('');
+    setError('');
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     setLoading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('num_cards', numCards);
-    formData.append('subject', subject);
+    setError('');
+    setSuccess(false);
 
     try {
-      const response = await fetch(`${config.API_BASE_URL}/api/upload`, {
-        method: 'POST',
-        body: formData,
-      });
+      let flashcardsResponse;
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate flashcards');
+      if (file) {
+        flashcardsResponse = await ApiService.generateFromFile(file, numCards);
+      } else if (youtubeUrl) {
+        flashcardsResponse = await ApiService.generateFromYoutube(youtubeUrl, numCards);
+      } else {
+        throw new Error('Please provide either a file or YouTube URL');
       }
 
-      onSuccess(data.flashcards);
+      const { flashcards } = flashcardsResponse;
+      
+      // Save the generated flashcards
+      await FlashcardService.saveFlashcards(flashcards, {
+        title: file ? file.name.split('.')[0] : 'YouTube Flashcards',
+        description: `Generated from ${file ? 'file upload' : 'YouTube video'}`,
+        style: 'modern'
+      });
+
+      setSuccess(true);
+      onFlashcardsGenerated();
+      
+      // Clear form
       setFile(null);
-      fileInputRef.current.value = null;
+      setYoutubeUrl('');
+      
     } catch (error) {
-      onError(error.message);
+      console.error('Error generating flashcards:', error);
+      setError(error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleClearFile = () => {
-    setFile(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = null;
-    }
-  };
-
   return (
-    <Box>
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-      >
-        <Paper
-          elevation={0}
-          sx={{
-            p: 3,
-            border: `2px dashed ${theme.palette.primary.main}`,
-            borderRadius: 2,
-            backgroundColor: theme.palette.mode === 'light' 
-              ? 'rgba(33, 150, 243, 0.04)'
-              : 'rgba(144, 202, 249, 0.04)',
-            transition: 'all 0.3s ease-in-out',
-            '&:hover': {
-              backgroundColor: theme.palette.mode === 'light'
-                ? 'rgba(33, 150, 243, 0.08)'
-                : 'rgba(144, 202, 249, 0.08)',
-            },
-          }}
-        >
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 2,
-            }}
-          >
-            <input
-              type="file"
-              accept=".txt,.docx,.pptx,.csv"
-              onChange={handleFileSelect}
-              style={{ display: 'none' }}
-              ref={fileInputRef}
-            />
+    <Paper
+      component={motion.div}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      elevation={2}
+      sx={{
+        p: 3,
+        bgcolor: 'background.paper',
+        borderRadius: 2,
+      }}
+    >
+      <Box component="form" onSubmit={handleSubmit}>
+        <Typography variant="h6" gutterBottom>
+          Generate Flashcards
+        </Typography>
 
-            <Box sx={{ textAlign: 'center', mb: 2 }}>
-              <motion.div
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <Button
-                  variant="contained"
-                  onClick={() => fileInputRef.current.click()}
-                  startIcon={<UploadIcon />}
-                  disabled={loading}
-                  sx={{
-                    background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
-                    color: 'white',
-                    px: 4,
-                    py: 1.5,
-                    borderRadius: 2,
-                    textTransform: 'none',
-                    fontSize: '1.1rem',
-                    fontWeight: 500,
-                  }}
-                >
-                  Choose File
-                </Button>
-              </motion.div>
-              
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ mt: 1 }}
-              >
-                Supported formats: TXT, DOCX, PPTX, CSV
-              </Typography>
-            </Box>
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
+            {error}
+          </Alert>
+        )}
 
-            {file && (
-              <Fade in={true}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body1" color="primary">
-                    {file.name}
-                  </Typography>
-                  <Tooltip title="Remove file">
-                    <IconButton
-                      size="small"
-                      onClick={handleClearFile}
-                      sx={{ color: theme.palette.error.main }}
-                    >
-                      <DeleteIcon />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
-              </Fade>
-            )}
+        {success && (
+          <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess(false)}>
+            Flashcards generated successfully!
+          </Alert>
+        )}
 
-            <Box sx={{ width: '100%', maxWidth: 400 }}>
-              <TextField
-                fullWidth
-                label="Number of Flashcards"
-                type="number"
-                value={numCards}
-                onChange={(e) => setNumCards(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
-                InputProps={{ inputProps: { min: 1, max: 20 } }}
-                sx={{ mb: 2 }}
-              />
-              
-              <TextField
-                fullWidth
-                label="Subject (Optional)"
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                placeholder="e.g., History, Science, Math"
-              />
-            </Box>
+        <Box sx={{ mb: 3 }}>
+          <Typography gutterBottom>
+            Number of flashcards to generate: {numCards}
+          </Typography>
+          <Slider
+            value={numCards}
+            onChange={handleNumCardsChange}
+            min={1}
+            max={20}
+            step={1}
+            marks
+            valueLabelDisplay="auto"
+            disabled={loading}
+          />
+        </Box>
 
-            <motion.div
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
+        <Box sx={{ mb: 3 }}>
+          <input
+            type="file"
+            accept=".txt,.pdf,.docx,.pptx,.csv,.md"
+            style={{ display: 'none' }}
+            id="file-upload"
+            onChange={handleFileChange}
+            disabled={loading}
+          />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Button
+              component="label"
+              htmlFor="file-upload"
+              variant={file ? "outlined" : "contained"}
+              startIcon={<CloudUploadIcon />}
+              disabled={loading || !!youtubeUrl}
+              sx={{ flexGrow: 1 }}
             >
-              <Button
-                variant="contained"
-                onClick={handleUpload}
-                disabled={!file || loading}
-                startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <AddIcon />}
-                sx={{
-                  mt: 2,
-                  background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
-                  color: 'white',
-                  px: 4,
-                  py: 1.5,
-                  borderRadius: 2,
-                  textTransform: 'none',
-                  fontSize: '1.1rem',
-                  fontWeight: 500,
-                }}
-              >
-                {loading ? 'Generating...' : 'Generate Flashcards'}
-              </Button>
-            </motion.div>
+              {file ? 'Change File' : 'Upload File'}
+            </Button>
+            {file && (
+              <IconButton onClick={clearFile} disabled={loading}>
+                <CloseIcon />
+              </IconButton>
+            )}
           </Box>
-        </Paper>
-      </motion.div>
-    </Box>
+          {file && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Selected file: {file.name}
+            </Typography>
+          )}
+        </Box>
+
+        <Box sx={{ mb: 3 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <TextField
+              fullWidth
+              label="YouTube URL"
+              value={youtubeUrl}
+              onChange={handleUrlChange}
+              disabled={loading || !!file}
+              InputProps={{
+                startAdornment: <YouTubeIcon sx={{ mr: 1, color: 'text.secondary' }} />,
+              }}
+            />
+            {youtubeUrl && (
+              <IconButton onClick={clearUrl} disabled={loading}>
+                <CloseIcon />
+              </IconButton>
+            )}
+          </Box>
+        </Box>
+
+        <Button
+          fullWidth
+          type="submit"
+          variant="contained"
+          disabled={loading || (!file && !youtubeUrl)}
+          sx={{ mt: 2 }}
+        >
+          {loading ? (
+            <CircularProgress size={24} />
+          ) : (
+            'Generate Flashcards'
+          )}
+        </Button>
+      </Box>
+    </Paper>
   );
 };
 

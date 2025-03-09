@@ -11,13 +11,25 @@ import {
   IconButton,
   useTheme,
   CircularProgress,
+  Divider,
+  Paper,
+  Alert,
 } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Close as CloseIcon } from '@mui/icons-material';
-import AuthService from '../services/authService';
+import { 
+  Close as CloseIcon,
+  Google as GoogleIcon,
+  Email as EmailIcon,
+  Lock as LockIcon,
+  LoginOutlined,
+  PersonAddOutlined,
+} from '@mui/icons-material';
+import { useNavigate, useLocation } from 'react-router-dom';
 
-const AuthDialog = ({ open, onClose, mode = 'login', onSuccess }) => {
+const AuthDialog = ({ mode = 'login', onSubmit, onGoogleAuth }) => {
   const theme = useTheme();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [isLogin, setIsLogin] = useState(mode === 'login');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -37,11 +49,27 @@ const AuthDialog = ({ open, onClose, mode = 'login', onSuccess }) => {
         throw new Error('Passwords do not match');
       }
 
-      const result = isLogin
-        ? await AuthService.login(formData.email, formData.password)
-        : await AuthService.register(formData.email, formData.password);
+      await onSubmit(formData.email, formData.password);
+      
+      // After successful auth, redirect to the intended page or dashboard
+      const from = location.state?.from?.pathname || '/dashboard';
+      navigate(from, { replace: true });
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      onSuccess(result);
+  const handleGoogleSignIn = async () => {
+    try {
+      setError('');
+      setLoading(true);
+      await onGoogleAuth();
+      
+      // After successful auth, redirect to the intended page or dashboard
+      const from = location.state?.from?.pathname || '/dashboard';
+      navigate(from, { replace: true });
     } catch (error) {
       setError(error.message);
     } finally {
@@ -55,6 +83,8 @@ const AuthDialog = ({ open, onClose, mode = 'login', onSuccess }) => {
       ...prev,
       [name]: value,
     }));
+    // Clear error when user starts typing
+    if (error) setError('');
   };
 
   const toggleMode = () => {
@@ -65,57 +95,64 @@ const AuthDialog = ({ open, onClose, mode = 'login', onSuccess }) => {
       password: '',
       confirmPassword: '',
     });
+    navigate(isLogin ? '/signup' : '/login', { 
+      replace: true,
+      state: location.state 
+    });
   };
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="xs"
-      fullWidth
-      PaperProps={{
-        component: motion.div,
-        initial: { opacity: 0, y: 20 },
-        animate: { opacity: 1, y: 0 },
-        transition: { duration: 0.3 },
-        sx: {
-          borderRadius: 2,
-          overflow: 'hidden',
-        },
+    <Box
+      component={motion.div}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        p: 3,
+        bgcolor: 'background.default'
       }}
     >
-      <Box
+      <Paper
+        elevation={theme.palette.mode === 'dark' ? 2 : 1}
         sx={{
-          position: 'relative',
-          background: theme.palette.mode === 'dark'
-            ? 'linear-gradient(45deg, #1a237e 30%, #311b92 90%)'
-            : 'linear-gradient(45deg, #42a5f5 30%, #3f51b5 90%)',
-          p: 2,
+          p: 4,
+          width: '100%',
+          maxWidth: 480,
+          borderRadius: 2,
+          bgcolor: 'background.paper'
         }}
       >
-        <IconButton
-          onClick={onClose}
-          sx={{
-            position: 'absolute',
-            right: 8,
-            top: 8,
-            color: 'white',
-          }}
-        >
-          <CloseIcon />
-        </IconButton>
-        <DialogTitle sx={{ color: 'white', p: 0 }}>
-          {isLogin ? 'Welcome Back!' : 'Create Account'}
-        </DialogTitle>
-        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
-          {isLogin
-            ? 'Sign in to access your flashcards'
-            : 'Join us to start creating smart flashcards'}
-        </Typography>
-      </Box>
+        <Box sx={{ mb: 4, textAlign: 'center' }}>
+          <motion.div
+            key={isLogin ? 'login' : 'signup'}
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ duration: 0.2 }}
+          >
+            <Typography variant="h4" component="h1" sx={{ fontWeight: 600, mb: 1 }}>
+              {isLogin ? 'Welcome Back!' : 'Create Account'}
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              {isLogin
+                ? 'Sign in to access your flashcards'
+                : 'Join us to start creating smart flashcards'}
+            </Typography>
+          </motion.div>
+        </Box>
 
-      <form onSubmit={handleSubmit}>
-        <DialogContent sx={{ pt: 3 }}>
+        {error && (
+          <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError('')}>
+            {error}
+          </Alert>
+        )}
+
+        <Box component="form" onSubmit={handleSubmit} sx={{ mb: 3 }}>
           <AnimatePresence mode="wait">
             <motion.div
               key={isLogin ? 'login' : 'signup'}
@@ -136,6 +173,9 @@ const AuthDialog = ({ open, onClose, mode = 'login', onSuccess }) => {
                   variant="outlined"
                   disabled={loading}
                   error={!!error}
+                  InputProps={{
+                    startAdornment: <EmailIcon sx={{ mr: 1, color: 'text.secondary' }} />,
+                  }}
                 />
                 <TextField
                   fullWidth
@@ -148,6 +188,9 @@ const AuthDialog = ({ open, onClose, mode = 'login', onSuccess }) => {
                   variant="outlined"
                   disabled={loading}
                   error={!!error}
+                  InputProps={{
+                    startAdornment: <LockIcon sx={{ mr: 1, color: 'text.secondary' }} />,
+                  }}
                 />
                 {!isLogin && (
                   <TextField
@@ -161,56 +204,57 @@ const AuthDialog = ({ open, onClose, mode = 'login', onSuccess }) => {
                     variant="outlined"
                     disabled={loading}
                     error={!!error}
+                    InputProps={{
+                      startAdornment: <LockIcon sx={{ mr: 1, color: 'text.secondary' }} />,
+                    }}
                   />
-                )}
-                {error && (
-                  <Typography color="error" variant="body2">
-                    {error}
-                  </Typography>
                 )}
               </Box>
             </motion.div>
           </AnimatePresence>
-        </DialogContent>
 
-        <DialogActions sx={{ px: 3, pb: 3, flexDirection: 'column', gap: 1 }}>
-          <Button
-            fullWidth
-            variant="contained"
-            color="primary"
-            size="large"
-            type="submit"
-            disabled={loading}
-            sx={{ position: 'relative' }}
-          >
-            {loading && (
-              <CircularProgress
-                size={24}
-                sx={{
-                  position: 'absolute',
-                  left: '50%',
-                  marginLeft: '-12px',
-                }}
-              />
-            )}
-            <span style={{ opacity: loading ? 0 : 1 }}>
+          <Box sx={{ mt: 3 }}>
+            <Button
+              fullWidth
+              type="submit"
+              variant="contained"
+              disabled={loading}
+              startIcon={loading ? <CircularProgress size={20} /> : (isLogin ? <LoginOutlined /> : <PersonAddOutlined />)}
+              sx={{ mb: 2 }}
+            >
               {isLogin ? 'Sign In' : 'Sign Up'}
-            </span>
-          </Button>
+            </Button>
+
+            <Button
+              fullWidth
+              onClick={handleGoogleSignIn}
+              variant="outlined"
+              disabled={loading}
+              startIcon={<GoogleIcon />}
+              sx={{ mb: 2 }}
+            >
+              Continue with Google
+            </Button>
+          </Box>
+        </Box>
+
+        <Divider sx={{ my: 2 }}>
+          <Typography variant="body2" color="text.secondary">
+            OR
+          </Typography>
+        </Divider>
+
+        <Box sx={{ textAlign: 'center' }}>
           <Button
-            fullWidth
-            variant="text"
             onClick={toggleMode}
             disabled={loading}
             sx={{ textTransform: 'none' }}
           >
-            {isLogin
-              ? "Don't have an account? Sign Up"
-              : 'Already have an account? Sign In'}
+            {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
           </Button>
-        </DialogActions>
-      </form>
-    </Dialog>
+        </Box>
+      </Paper>
+    </Box>
   );
 };
 
